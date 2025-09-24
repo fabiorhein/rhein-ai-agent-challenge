@@ -12,5 +12,11 @@ enableCORS = false
 enableXsrfProtection = false
 enableWebsocketCompression = false
 
+[custom]
+# Configurações da aplicação
+google_api_key = ""
+supabase_url = ""
+supabase_key = ""
+
 [browser]
 gatherUsageStats = false
