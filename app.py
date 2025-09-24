@@ -40,33 +40,56 @@ if 'all_analyses_history' not in st.session_state:
 
 # --- Carregamento de Configurações e Serviços ---
 config = get_config()
+
+# Verificar se a chave da API está configurada
+if not config["google_api_key"]:
+    st.error("❌ Chave da API do Google não configurada. Por favor, configure a variável de ambiente GOOGLE_API_KEY no arquivo .env")
+    st.stop()
+
+# Verificar se as configurações do Supabase estão configuradas
+if not config["supabase_url"] or not config["supabase_key"]:
+    st.warning("⚠️ Configurações do Supabase não encontradas. Algumas funcionalidades podem não funcionar. Configure SUPABASE_URL e SUPABASE_KEY no arquivo .env")
+
 memory = SupabaseMemory(url=config["supabase_url"], key=config["supabase_key"])
 
 # --- Interface do Usuário (Sidebar) ---
 uploaded_file = build_sidebar(memory, st.session_state.user_id)
 
 # --- Lógica Principal de Processamento do CSV ---
-if uploaded_file is not None and st.session_state.df is None:
-    with st.spinner("Processando seu CSV... Isso pode levar um momento."):
-        try:
-            df, file_hash = load_csv(uploaded_file)
-            st.session_state.df = df
-            st.session_state.df_info = get_dataset_info(df, uploaded_file.name)
+if uploaded_file is not None:
+    st.sidebar.success("Arquivo CSV carregado com sucesso!")
+    if st.session_state.df is None:
+        with st.spinner("Processando seu CSV... Isso pode levar um momento."):
+            try:
+                # Debug: mostrar informações do arquivo
+                st.sidebar.write(f"**Debug - Nome do arquivo:** {uploaded_file.name}")
+                st.sidebar.write(f"**Debug - Tamanho do arquivo:** {uploaded_file.size} bytes")
 
-            # Cria uma nova sessão no Supabase
-            session_id = memory.create_session(
-                dataset_name=uploaded_file.name,
-                dataset_hash=file_hash,
-                user_id=st.session_state.user_id
-            )
-            st.session_state.session_id = session_id
-            st.session_state.messages = []
-            st.session_state.conversation_history = ""
-            st.session_state.all_analyses_history = f"Análise iniciada para o dataset: {uploaded_file.name}\n"
-            st.success("Dataset carregado com sucesso! Pronto para suas perguntas.")
-        except ValueError as e:
-            st.error(f"Erro ao carregar o arquivo: {e}")
-            st.session_state.df = None
+                df, file_hash = load_csv(uploaded_file)
+                st.session_state.df = df
+                st.session_state.df_info = get_dataset_info(df, uploaded_file.name)
+
+                # Debug: mostrar informações do dataframe
+                st.sidebar.write(f"**Debug - Shape do DataFrame:** {df.shape}")
+                st.sidebar.write(f"**Debug - Colunas:** {list(df.columns)}")
+
+                # Cria uma nova sessão no Supabase
+                session_id = memory.create_session(
+                    dataset_name=uploaded_file.name,
+                    dataset_hash=file_hash,
+                    user_id=st.session_state.user_id
+                )
+                st.session_state.session_id = session_id
+                st.session_state.messages = []
+                st.session_state.conversation_history = ""
+                st.session_state.all_analyses_history = f"Análise iniciada para o dataset: {uploaded_file.name}\n"
+                st.success("Dataset carregado com sucesso! Pronto para suas perguntas.")
+                st.rerun()  # Força recarregamento para mostrar o dataset
+            except ValueError as e:
+                st.error(f"Erro ao carregar o arquivo: {e}")
+                st.session_state.df = None
+    else:
+        st.sidebar.info("Dataset já carregado. Faça suas perguntas na área principal.")
 
 # --- Área Principal de Exibição ---
 st.title("🤖 InsightAgent EDA: Seu Assistente de Análise de Dados")
@@ -143,23 +166,31 @@ if st.session_state.df is not None:
                     st.session_state.all_analyses_history += f"Análise Estatística:\n{bot_response_content}\n"
 
                 elif agent_to_call == "VisualizationAgent":
-                    generated_code = run_visualization(
-                        api_key=config["google_api_key"],
-                        df=st.session_state.df,
-                        analysis_results=st.session_state.all_analyses_history,
-                        user_request=question_for_agent
-                    )
-
-                    # Tenta executar o código para gerar o gráfico
                     try:
-                        # Cuidado: exec é poderoso. Usar com cautela.
-                        local_scope = {"df": st.session_state.df, "pd": pd, "px": px, "go": go}
-                        exec(generated_code, local_scope)
-                        chart_figure = local_scope.get('fig')
-                        bot_response_content = "Aqui está a visualização que você pediu."
-                        st.session_state.all_analyses_history += f"Visualização Gerada: {question_for_agent}\n"
+                        generated_code = run_visualization(
+                            api_key=config["google_api_key"],
+                            df=st.session_state.df,
+                            analysis_results=st.session_state.all_analyses_history,
+                            user_request=question_for_agent
+                        )
+
+                        # Tenta executar o código para gerar o gráfico
+                        try:
+                            # Cuidado: exec é poderoso. Usar com cautela.
+                            local_scope = {"df": st.session_state.df, "pd": pd, "px": px, "go": go}
+                            exec(generated_code, local_scope)
+                            chart_figure = local_scope.get('fig')
+
+                            if chart_figure:
+                                bot_response_content = "Aqui está a visualização que você pediu."
+                                st.session_state.all_analyses_history += f"Visualização Gerada: {question_for_agent}\n"
+                            else:
+                                bot_response_content = "O código foi gerado, mas não criou uma figura válida. Verifique se o código define uma variável 'fig'."
+                        except Exception as e:
+                            bot_response_content = f"Desculpe, não consegui executar o código do gráfico. Erro: {e}\n\nCódigo que tentei executar:\n```python\n{generated_code}\n```"
+
                     except Exception as e:
-                        bot_response_content = f"Desculpe, não consegui gerar o gráfico. Erro: {e}\n\nCódigo que tentei executar:\n```python\n{generated_code}\n```"
+                        bot_response_content = f"Desculpe, não consegui gerar o gráfico devido a um erro no agente de visualização: {e}\n\nTente reformular sua pergunta ou verifique se sua chave da API do Google está configurada corretamente."
 
                 elif agent_to_call == "ConsultantAgent":
                     bot_response_content = run_consultant(
@@ -187,7 +218,7 @@ if st.session_state.df is not None:
                     "content": bot_response_content,
                     "chart_fig": chart_figure
                 })
-
+                display_chat_message("assistant", bot_response_content, chart_figure, key=f"chart_assistant_{len(st.session_state.messages)-1}")
                 # Atualiza o histórico de texto
                 st.session_state.conversation_history += f"Assistente: {bot_response_content}\n"
 

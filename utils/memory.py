@@ -1,5 +1,4 @@
 from supabase import create_client, Client
-import json
 
 
 class SupabaseMemory:
@@ -14,25 +13,26 @@ class SupabaseMemory:
         }).execute()
         return response.data[0]['id']
 
-    def log_conversation(self, session_id: str, question: str, answer: str, chart_json: dict = None) -> str:
-        response = self.client.table("conversations").insert({
+    def log_conversation(self, session_id: str, question: str, answer: str, chart_json: dict | None = None) -> str:
+        payload = {
             "session_id": session_id,
             "question": question,
             "answer": answer,
-            "chart_json": json.dumps(chart_json) if chart_json else None
-        }).execute()
+            "chart_json": chart_json if chart_json is not None else None
+        }
+        response = self.client.table("conversations").insert(payload).execute()
         return response.data[0]['id']
 
-    def store_analysis(self, session_id: str, conversation_id: str, analysis_type: str, results: dict):
+    def store_analysis(self, session_id: str, conversation_id: str | None, analysis_type: str, results: dict):
         self.client.table("analyses").insert({
             "session_id": session_id,
             "conversation_id": conversation_id,
             "analysis_type": analysis_type,
-            "results": json.dumps(results)
+            "results": results
         }).execute()
 
-    def store_conclusion(self, session_id: str, conversation_id: str, conclusion_text: str,
-                         confidence_score: float = None):
+    def store_conclusion(self, session_id: str, conversation_id: str | None, conclusion_text: str,
+                         confidence_score: float | None = None):
         self.client.table("conclusions").insert({
             "session_id": session_id,
             "conversation_id": conversation_id,
@@ -41,7 +41,7 @@ class SupabaseMemory:
         }).execute()
 
     def store_generated_code(self, session_id: str, conversation_id: str, code_type: str, python_code: str,
-                             description: str):
+                             description: str | None):
         self.client.table("generated_codes").insert({
             "session_id": session_id,
             "conversation_id": conversation_id,
@@ -67,3 +67,8 @@ class SupabaseMemory:
     def get_user_sessions(self, user_id: str):
         return self.client.table("sessions").select("id, created_at, dataset_name").eq("user_id", user_id).order(
             "created_at", desc=True).execute().data
+
+    def get_generated_codes(self, session_id: str):
+        return self.client.table("generated_codes").select(
+            "id, created_at, code_type, python_code, description, conversation_id"
+        ).eq("session_id", session_id).order("created_at", desc=True).execute().data

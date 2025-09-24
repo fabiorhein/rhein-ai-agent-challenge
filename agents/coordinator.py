@@ -41,6 +41,7 @@ Analise a pergunta do usuário e o contexto. Retorne um objeto JSON com a sua de
 - Pergunta: "Faça uma análise completa" -> agent_to_call: "DataAnalystAgent", question_for_agent: "Execute uma análise descritiva completa do dataset, incluindo estatísticas básicas, contagem de valores nulos e duplicados."
 
 **IMPORTANTE: Sua saída DEVE ser APENAS o objeto JSON, sem nenhum texto adicional ou formatação markdown.**
+Minimize o tamanho: responda com o menor JSON válido possível (sem espaços extras).
 """
 
 def _clean_json_output(raw_output: str) -> str:

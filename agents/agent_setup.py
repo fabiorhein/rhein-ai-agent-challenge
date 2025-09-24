@@ -1,29 +1,35 @@
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
 
 import pandas as pd
 import io
 import json
 
 def get_llm(api_key: str):
-    """Retorna uma instância do LLM Gemini Flash."""
-    return ChatGoogleGenerativeAI(model="gemini-1.5-flash-latest", google_api_key=api_key, temperature=0.1)
+    """Retorna uma instância do LLM Gemini Flash com timeout."""
+    try:
+        return ChatGoogleGenerativeAI(
+            model="gemini-2.0-flash",
+            google_api_key=api_key,
+            temperature=0.0,
+            request_timeout=30  # Timeout de 30 segundos
+        )
+    except Exception as e:
+        print(f"Erro ao criar LLM: {e}")
+        raise e
 
 def get_dataset_preview(df: pd.DataFrame) -> str:
-    """Gera uma prévia textual do dataframe para o prompt."""
-    buffer = io.StringIO()
-    df.info(buf=buffer)
-    info_str = buffer.getvalue()
+    """Preview compacto para reduzir tokens."""
+    MAX_COLS = 30
+    MAX_ROWS_SAMPLE = 3
+    cols = df.columns.tolist()[:MAX_COLS]
+    dtypes = {c: str(df.dtypes[c]) for c in cols}
+    sample = df[cols].head(MAX_ROWS_SAMPLE).to_dict(orient="records")
 
-    preview = f"""
-    ### Informações do Dataset
-    - Shape (Linhas, Colunas): {df.shape}
-    - Primeiras 5 linhas:
-    {df.head().to_string()}
-    - Tipos de Dados e Valores Não-Nulos:
-    {info_str}
-    - Estatísticas Descritivas (Numéricas):
-    {df.describe().to_string()}
-    """
+    preview = (
+        f"Shape: {df.shape}\n"
+        f"Columns (limited to {MAX_COLS}): {cols}\n"
+        f"Dtypes: {dtypes}\n"
+        f"Sample first {MAX_ROWS_SAMPLE} rows (dict): {sample}\n"
+    )
     return preview
