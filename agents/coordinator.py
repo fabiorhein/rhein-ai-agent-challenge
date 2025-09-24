@@ -1,6 +1,8 @@
+# Arquivo: agents/coordinator.py
+
 from agents.agent_setup import get_llm, get_dataset_preview
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import JsonOutputParser
+from langchain_core.output_parsers import StrOutputParser
 import json
 import pandas as pd
 
@@ -38,21 +40,62 @@ Analise a pergunta do usuário e o contexto. Retorne um objeto JSON com a sua de
 - Pergunta: "Me dê o código para gerar esse gráfico de barras" -> agent_to_call: "CodeGeneratorAgent"
 - Pergunta: "Faça uma análise completa" -> agent_to_call: "DataAnalystAgent", question_for_agent: "Execute uma análise descritiva completa do dataset, incluindo estatísticas básicas, contagem de valores nulos e duplicados."
 
-Seja preciso. A qualidade da resposta final depende da sua decisão.
+**IMPORTANTE: Sua saída DEVE ser APENAS o objeto JSON, sem nenhum texto adicional ou formatação markdown.**
 """
+
+def _clean_json_output(raw_output: str) -> str:
+    """
+    Limpa a saída do LLM para extrair apenas o JSON, removendo o wrapper de markdown.
+    """
+    # Verifica se a saída contém o wrapper de código JSON
+    if "```json" in raw_output:
+        # Extrai o conteúdo entre ```json e ```
+        clean_output = raw_output.split("```json")[1].split("```")[0].strip()
+        return clean_output
+    
+    # Se não tiver o wrapper, mas tiver os ```, remove-os também
+    if "```" in raw_output:
+        clean_output = raw_output.replace("```", "").strip()
+        return clean_output
+
+    return raw_output.strip()
+
 
 def get_coordinator_agent(api_key: str):
     llm = get_llm(api_key)
     prompt = ChatPromptTemplate.from_template(PROMPT_TEMPLATE)
-    chain = prompt | llm | JsonOutputParser()
+    # Alteração: Agora usamos StrOutputParser para obter a string bruta do LLM
+    chain = prompt | llm | StrOutputParser()
     return chain
 
-def run_coordinator(api_key: str, df: pd.DataFrame, conversation_history: str, user_question: str):
+def run_coordinator(api_key: str, df: pd.DataFrame, conversation_history: str, user_question: str) -> dict:
+    """
+    Executa o agente coordenador e garante que a saída seja um JSON válido.
+    """
     agent = get_coordinator_agent(api_key)
     dataset_preview = get_dataset_preview(df)
-    response = agent.invoke({
+    
+    # 1. Invoca o agente para obter a resposta como string
+    raw_response = agent.invoke({
         "dataset_preview": dataset_preview,
         "conversation_history": conversation_history,
         "user_question": user_question
     })
-    return response
+    
+    # 2. Limpa a string de resposta para remover o markdown
+    cleaned_response = _clean_json_output(raw_response)
+    
+    # 3. Tenta carregar a string limpa como um objeto JSON
+    try:
+        json_response = json.loads(cleaned_response)
+        return json_response
+    except json.JSONDecodeError as e:
+        # Se falhar, isso indica um problema mais sério com a saída do LLM
+        print(f"Erro ao decodificar JSON do Coordenador: {e}")
+        print(f"Resposta bruta recebida: {raw_response}")
+        # Retorna um dicionário de erro para evitar que a aplicação quebre
+        return {
+            "agent_to_call": "ErrorAgent",
+            "question_for_agent": "A resposta do coordenador não foi um JSON válido.",
+            "rationale": f"Erro de parsing. Resposta recebida:\n{raw_response}"
+        }
