@@ -8,8 +8,8 @@ else:
     import toml as tomllib
 
 def get_config():
-    """Carrega e retorna as configurações do secret.toml."""
-    config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.streamlit', 'secret.toml')
+    """Carrega e retorna as configurações do secrets.toml."""
+    config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.streamlit', 'secrets.toml')
 
     try:
         with open(config_path, 'rb') as f:
@@ -23,7 +23,7 @@ def get_config():
             "supabase_key": app_config.get("supabase_key"),
         }
     except FileNotFoundError:
-        print("Aviso: Arquivo secret.toml não encontrado. Usando variáveis de ambiente como fallback.")
+        print("Aviso: Arquivo secrets.toml não encontrado. Usando variáveis de ambiente como fallback.")
         # Fallback para variáveis de ambiente
         return {
             "google_api_key": os.getenv("GOOGLE_API_KEY"),
@@ -31,7 +31,7 @@ def get_config():
             "supabase_key": os.getenv("SUPABASE_KEY"),
         }
     except Exception as e:
-        print(f"Erro ao carregar secret.toml: {e}")
+        print(f"Erro ao carregar secrets.toml: {e}")
         return {
             "google_api_key": None,
             "supabase_url": None,
