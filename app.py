@@ -113,8 +113,22 @@ if st.session_state.df is not None:
     st.header("Converse com seus Dados")
 
     # Exibe mensagens do histórico
-    for message in st.session_state.messages:
-        display_chat_message(message["role"], message["content"], message.get("chart_fig"), generated_code=message.get("generated_code"))
+    for i, message in enumerate(st.session_state.messages):
+        # Debug: mostrar informações da mensagem
+        if DEBUG_MODE:
+            st.write(f"🔍 DEBUG: Exibindo mensagem {i}: {message.get('role')} - chart_fig: {message.get('chart_fig') is not None} - generated_code: {message.get('generated_code') is not None}")
+
+        # Verificar se a mensagem tem gráfico válido antes de exibir
+        chart_to_display = message.get("chart_fig")
+        if chart_to_display and DEBUG_MODE:
+            try:
+                chart_to_display.to_json()
+                st.write(f"🔍 DEBUG: Gráfico {i} é válido")
+            except Exception as e:
+                st.write(f"🔍 DEBUG: Gráfico {i} é inválido: {str(e)}")
+                chart_to_display = None
+
+        display_chat_message(message["role"], message["content"], chart_to_display, generated_code=message.get("generated_code"))
 
     # --- Sugestões Dinâmicas de Perguntas ---
     st.subheader("Sugestões de Perguntas:")
@@ -263,20 +277,50 @@ if st.session_state.df is not None:
                     with st.chat_message("assistant"):
                         st.markdown(bot_response_content)
 
-                        # Sempre exibir o código gerado
+                        # Sempre exibir o código gerado PRIMEIRO
                         execution_container, results_container = display_code_with_streamlit_suggestion(generated_code, auto_execute=True)
 
-                        # Exibir gráfico se houver (do VisualizationAgent)
-                        if chart_figure:
-                            st.plotly_chart(chart_figure, use_container_width=True)
+                        # Exibir gráfico APENAS se foi gerado pelo VisualizationAgent (evita duplicação)
+                        if chart_figure and agent_to_call == "VisualizationAgent":
+                            try:
+                                st.plotly_chart(chart_figure, use_container_width=True)
+                                if DEBUG_MODE:
+                                    st.write("🔍 DEBUG: Gráfico exibido com sucesso na execução inicial!")
+                            except Exception as e:
+                                st.warning(f"⚠️ Erro ao exibir gráfico na execução inicial: {str(e)}")
 
-                    # Atualizar a mensagem no histórico
+                    # Atualizar a mensagem no histórico com verificação robusta
+                    chart_to_save = chart_figure
+                    if chart_figure:
+                        try:
+                            # Verificar se o gráfico é serializável
+                            chart_figure.to_json()
+                            if DEBUG_MODE:
+                                st.write("🔍 DEBUG: Gráfico é válido e serializável!")
+                        except Exception as e:
+                            if DEBUG_MODE:
+                                st.write(f"🔍 DEBUG: Gráfico não é serializável: {str(e)}")
+                            # Manter o gráfico mesmo se não for serializável
+                            pass
+
+                    # Criar uma cópia profunda do gráfico para evitar problemas de referência
+                    import copy
+                    if chart_to_save:
+                        try:
+                            chart_to_save = copy.deepcopy(chart_to_save)
+                        except Exception as e:
+                            if DEBUG_MODE:
+                                st.write(f"🔍 DEBUG: Não foi possível fazer deepcopy do gráfico: {str(e)}")
+
                     st.session_state.messages.append({
                         "role": "assistant",
                         "content": bot_response_content,
-                        "chart_fig": chart_figure,
+                        "chart_fig": chart_to_save,
                         "generated_code": generated_code
                     })
+
+                    if DEBUG_MODE:
+                        st.write(f"🔍 DEBUG: Gráfico salvo no histórico: {chart_to_save is not None}")
 
                     if execution_container is None:
                         st.error("❌ Erro: Containers não foram criados corretamente!")
@@ -354,6 +398,20 @@ if st.session_state.df is not None:
                             if DEBUG_MODE:
                                 st.write("🔍 DEBUG: Código já executado pelo VisualizationAgent!")
 
+                else:
+                    if DEBUG_MODE:
+                        st.write("🔍 DEBUG: Nenhum código gerado, exibindo mensagem normal...")
+                    # Para agentes sem código, usar display_chat_message normalmente
+                    display_chat_message("assistant", bot_response_content, chart_figure, generated_code=None)
+
+                    # Atualizar a mensagem no histórico
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": bot_response_content,
+                        "chart_fig": chart_figure,
+                        "generated_code": None
+                    })
+
                 # Atualiza o histórico de texto APÓS processar a resposta
                 st.session_state.conversation_history += f"Assistente: {bot_response_content}\n"
 
@@ -405,8 +463,62 @@ if st.session_state.df is not None:
                         st.warning(f"⚠️ Código executado com sucesso, mas houve problema ao salvar: {str(db_error)}")
                         # Não interromper o fluxo principal
 
-                # Sempre recarregar a página para atualizar as sugestões com o novo histórico
-                st.rerun()
+                # Recarregar a página para atualizar as sugestões com o novo histórico
+                # Mas apenas se estivermos em modo debug OU se não houver gráfico para evitar problemas
+                should_rerun = True
+
+                if chart_figure:
+                    # Se há gráfico, só fazer rerun em modo debug para evitar problemas de renderização
+                    if DEBUG_MODE:
+                        st.success("✅ Resposta processada com sucesso! (Gráfico preservado - rerun em modo debug)")
+                        st.rerun()
+                    else:
+                        st.success("✅ Resposta processada com sucesso!")
+                        # Forçar atualização das sugestões sem rerun
+                        should_rerun = False
+                        st.info("🔄 Atualizando sugestões dinâmicas...")
+
+                        # Forçar reavaliação das sugestões
+                        if st.session_state.conversation_history.strip():
+                            try:
+                                dataset_preview = get_dataset_preview(st.session_state.df)
+                                conversation_context = extract_conversation_context(st.session_state.conversation_history)
+                                enriched_history = st.session_state.conversation_history
+                                if conversation_context["analysis_types"]:
+                                    enriched_history += f"\n\nTipos de análise realizados: {', '.join(conversation_context['analysis_types'])}"
+                                if conversation_context["agents_used"]:
+                                    enriched_history += f"\nAgentes utilizados: {', '.join(conversation_context['agents_used'])}"
+
+                                # Gerar novas sugestões baseadas no histórico atualizado
+                                new_suggestions = generate_dynamic_suggestions(
+                                    api_key=config["google_api_key"],
+                                    dataset_preview=dataset_preview,
+                                    conversation_history=enriched_history
+                                )
+
+                                # Mostrar sugestões atualizadas
+                                st.subheader("📝 Sugestões Atualizadas:")
+                                cols = st.columns(3)
+                                for i, suggestion in enumerate(new_suggestions[:3]):
+                                    if cols[i].button(suggestion, use_container_width=True, key=f"suggestion_{i}_{len(st.session_state.messages)}"):
+                                        st.session_state.last_question = suggestion
+
+                                if DEBUG_MODE:
+                                    st.write("**Debug - Novas sugestões geradas:**")
+                                    st.json(conversation_context)
+
+                            except Exception as e:
+                                st.warning(f"Erro ao atualizar sugestões: {e}")
+                else:
+                    # Se não há gráfico, rerun é seguro
+                    if DEBUG_MODE:
+                        st.success("✅ Resposta processada com sucesso! (Sem gráfico - rerun em modo debug)")
+                    else:
+                        st.success("✅ Resposta processada com sucesso!")
+                    should_rerun = True
+
+                if should_rerun and not DEBUG_MODE:
+                    st.rerun()
 
             except Exception as e:
                 st.error(f"Ocorreu um erro inesperado: {e}")
