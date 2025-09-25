@@ -34,21 +34,28 @@ class SupabaseMemory:
     def store_conclusion(self, session_id: str, conversation_id: str | None, conclusion_text: str,
                          confidence_score: float | None = None):
         self.client.table("conclusions").insert({
-            "session_id": session_id,
-            "conversation_id": conversation_id,
             "conclusion_text": conclusion_text,
             "confidence_score": confidence_score
         }).execute()
 
     def store_generated_code(self, session_id: str, conversation_id: str, code_type: str, python_code: str,
                              description: str | None):
-        self.client.table("generated_codes").insert({
-            "session_id": session_id,
-            "conversation_id": conversation_id,
-            "code_type": code_type,
-            "python_code": python_code,
-            "description": description
-        }).execute()
+        # Adicionar proteção contra códigos muito longos que podem causar timeout
+        if len(python_code) > 5000:
+            python_code = python_code[:5000] + "\n\n# ... (código truncado para evitar timeout no banco de dados)"
+
+        try:
+            self.client.table("generated_codes").insert({
+                "session_id": session_id,
+                "conversation_id": conversation_id,
+                "code_type": code_type,
+                "python_code": python_code,
+                "description": description
+            }).execute()
+        except Exception as e:
+            # Em caso de erro no banco, não propagar a exceção para não interromper o fluxo principal
+            print(f"Erro ao salvar código gerado no banco: {e}")
+            # Não relançar a exceção para não interromper o usuário
 
     def get_session_history(self, session_id: str) -> dict:
         conversations = self.client.table("conversations").select("*").eq("session_id", session_id).order(
