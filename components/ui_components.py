@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import time
-
+import hashlib 
 
 def build_sidebar(memory, user_id):
     """Constrói a sidebar do aplicativo."""
@@ -33,9 +33,48 @@ def build_sidebar(memory, user_id):
     return uploaded_file
 
 
-def display_chat_message(role, content, chart_fig=None, key=None):
+def display_chat_message(role, content, chart_fig=None, key=None, generated_code=None):
     """Exibe uma mensagem no chat."""
     with st.chat_message(role):
         st.markdown(content)
         if chart_fig:
+            # Gera uma chave única se não foi fornecida
+            if key is None:
+                content_hash = hashlib.md5(f"{role}_{content}_{str(chart_fig)}".encode()).hexdigest()[:8]
+                key = f"chart_{role}_{content_hash}"
             st.plotly_chart(chart_fig, use_container_width=True, key=key)
+        if generated_code:
+            execution_container, results_container = display_code_with_streamlit_suggestion(generated_code)
+            # Retornar os containers para serem usados pelo app.py
+            return execution_container, results_container
+
+    return None, None
+
+
+def display_code_with_streamlit_suggestion(code, auto_execute=True):
+    """Exibe código Python com opção de execução na própria interface."""
+    st.code(code, language='python')
+
+    st.info("💡 **Código Gerado:** Este código será executado automaticamente na própria interface!")
+
+    if auto_execute:
+        # Expander para mostrar que o código está sendo executado
+        with st.expander("🔄 Executando código automaticamente...", expanded=True):
+            st.markdown("**Status:** Executando código Python gerado...")
+
+            # Simular execução (iremos implementar a execução real no app.py)
+            execution_container = st.empty()
+
+            # Placeholder para resultados da execução
+            st.markdown("**Resultados da Execução:**")
+            results_container = st.empty()
+
+            # Retornar os containers para serem atualizados pelo app.py
+            return execution_container, results_container
+
+    # Botão para execução manual
+    if st.button("▶️ Executar Código Manualmente", key="execute_code_btn"):
+        st.info("Executando código...")
+        # A execução será feita pelo app.py
+
+    return None, None

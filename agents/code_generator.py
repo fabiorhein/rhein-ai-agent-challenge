@@ -16,7 +16,8 @@ Gere um script Python que reproduza a análise solicitada. O código deve ser:
 - **Completo e Executável**: Inclua todos os imports necessários no topo (`pandas`, `plotly`, etc.).
 - **Bem Documentado**: Adicione comentários explicativos.
 - **Profissional**: Use boas práticas de programação.
-- **Focado**: Retorne APENAS o bloco de código Python, sem nenhum texto ou explicação adicional. A saída deve ser diretamente copiável e executável.
+- **IMPORTANTE**: O DataFrame já está carregado na variável `df`. NÃO inclua código para carregar arquivos CSV.
+- **Focado**: Retorne APENAS o bloco de código Python, sem nenhum texto ou explicação adicional.
 
 **Exemplo de Análise:** "Cálculo da média da coluna 'price' e plotagem de um histograma."
 **Exemplo de Saída Esperada:**
@@ -24,19 +25,20 @@ Gere um script Python que reproduza a análise solicitada. O código deve ser:
 import pandas as pd
 import plotly.express as px
 
-# Carregar o dataset (substitua 'seu_dataset.csv' pelo nome do seu arquivo)
-# df = pd.read_csv('seu_dataset.csv')
+# O DataFrame 'df' já está carregado e disponível
+# Não é necessário carregar o arquivo CSV
 
 # --- Análise Estatística ---
 # Calcula a média da coluna 'price'
-# media_price = df['price'].mean()
-# print(f"A média de 'price' é: {{media_price}}")
+media_price = df['price'].mean()
+print(f"A média de 'price' é: {{media_price}}")
 
 # --- Visualização ---
 # Cria um histograma para a distribuição de 'price'
-# fig = px.histogram(df, x='price', title='Distribuição de Preços')
-# fig.update_layout(bargap=0.1)
-# fig.show()
+fig = px.histogram(df, x='price', title='Distribuição de Preços')
+fig.update_layout(bargap=0.1)
+# fig.show()  # Não necessário no Streamlit
+```
 Gere agora o código para a análise fornecida.
 """
 

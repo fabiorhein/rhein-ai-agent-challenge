@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px  # Necessário para o exec
+import matplotlib.pyplot as plt
+import numpy as np
 from uuid import uuid4
 import time
 
@@ -17,10 +19,12 @@ from agents.coordinator import run_coordinator
 from agents.data_analyst import run_data_analyst
 from agents.visualization import run_visualization
 from agents.consultant import run_consultant
-from agents.code_generator import run_code_generator
 
 # --- Configuração da Página e Estado da Sessão ---
 st.set_page_config(layout="wide", page_title="InsightAgent EDA")
+
+# Configuração de debug (pode ser alterada para False em produção)
+DEBUG_MODE = False
 
 # Inicializa o estado da sessão
 if 'session_id' not in st.session_state:
@@ -213,12 +217,95 @@ if st.session_state.df is not None:
                     bot_response_content = "Desculpe, não entendi qual agente usar. Poderia reformular sua pergunta?"
 
                 # 3. Exibe a resposta do bot
+                execution_container = None
+                results_container = None
+
                 st.session_state.messages.append({
                     "role": "assistant",
                     "content": bot_response_content,
-                    "chart_fig": chart_figure
+                    "chart_fig": chart_figure,
+                    "generated_code": generated_code if generated_code else None
                 })
-                display_chat_message("assistant", bot_response_content, chart_figure)
+
+                # Executar código automaticamente se foi gerado
+                if generated_code:
+                    if DEBUG_MODE:
+                        st.write("🔍 DEBUG: Código detectado, iniciando execução...")
+
+                    # Capturar containers para execução
+                    execution_container, results_container = display_chat_message("assistant", bot_response_content, chart_figure, generated_code=generated_code)
+
+                    if execution_container is None:
+                        st.error("❌ Erro: Containers não foram criados corretamente!")
+                        # Não usar return aqui, continuar a execução
+
+                    # Executar o código gerado
+                    try:
+                        execution_container.markdown("**Status:** 🔄 Executando código Python gerado...")
+
+                        # Criar ambiente seguro para execução
+                        local_scope = {
+                            "df": st.session_state.df,
+                            "pd": pd,
+                            "px": px,
+                            "go": go,
+                            "st": st,
+                            "plt": plt,
+                            "np": np
+                        }
+
+                        # Verificar se o DataFrame está disponível
+                        if st.session_state.df is None:
+                            execution_container.markdown("**Status:** ❌ Erro: DataFrame não encontrado!")
+                            results_container.markdown("**Erro:** Nenhum arquivo CSV foi carregado.")
+                            st.error("Erro: Nenhum DataFrame disponível para análise.")
+                            # Não usar return, continuar com o fluxo
+
+                        if DEBUG_MODE:
+                            st.write("🔍 DEBUG: Ambiente de execução criado, executando código...")
+
+                        # Executar o código
+                        exec(generated_code, local_scope)
+
+                        if DEBUG_MODE:
+                            st.write("🔍 DEBUG: Código executado, verificando resultados...")
+
+                        # Verificar se foi gerada uma figura
+                        if 'fig' in local_scope:
+                            execution_container.markdown("**Status:** ✅ Código executado com sucesso!")
+                            results_container.markdown("**Resultados:** Visualização gerada automaticamente:")
+
+                            # Exibir a figura gerada
+                            fig = local_scope['fig']
+                            st.plotly_chart(fig, use_container_width=True)
+
+                            # Atualizar a mensagem para incluir a figura
+                            st.session_state.messages[-1]["chart_fig"] = fig
+                            chart_figure = fig
+
+                            if DEBUG_MODE:
+                                st.write("🔍 DEBUG: Figura gerada e exibida com sucesso!")
+
+                        else:
+                            execution_container.markdown("**Status:** ✅ Código executado com sucesso!")
+                            results_container.markdown("**Resultados:** Código executado sem gerar visualização específica.")
+
+                            if DEBUG_MODE:
+                                st.write("🔍 DEBUG: Código executado sem gerar figura!")
+
+                        # Capturar outras saídas importantes
+                        if 'result' in local_scope:
+                            results_container.markdown(f"**Valor de retorno:** {local_scope['result']}")
+
+                    except Exception as e:
+                        execution_container.markdown(f"**Status:** ❌ Erro na execução: {str(e)}")
+                        results_container.markdown(f"**Detalhes do erro:** {str(e)}")
+                        st.error(f"Erro na execução do código: {e}")
+
+                else:
+                    if DEBUG_MODE:
+                        st.write("🔍 DEBUG: Nenhum código gerado, exibindo mensagem normal...")
+                    display_chat_message("assistant", bot_response_content, chart_figure, generated_code=generated_code)
                 # Atualiza o histórico de texto
                 st.session_state.conversation_history += f"Assistente: {bot_response_content}\n"
 
@@ -239,8 +326,9 @@ if st.session_state.df is not None:
                         description=question_for_agent
                     )
 
-                # Recarrega a página para exibir a nova mensagem
-                st.rerun()
+                # Recarrega a página para exibir a nova mensagem APENAS se não há código para executar
+                if not generated_code:
+                    st.rerun()
 
             except Exception as e:
                 st.error(f"Ocorreu um erro inesperado: {e}")
