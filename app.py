@@ -13,6 +13,7 @@ from utils.memory import SupabaseMemory
 from utils.data_loader import load_csv, get_dataset_info
 from components.ui_components import build_sidebar, display_chat_message
 from components.notebook_generator import create_jupyter_notebook
+from components.suggestion_generator import generate_dynamic_suggestions, get_fallback_suggestions, extract_conversation_context
 
 # Importação dos agentes
 from agents.coordinator import run_coordinator
@@ -20,6 +21,7 @@ from agents.data_analyst import run_data_analyst
 from agents.visualization import run_visualization
 from agents.consultant import run_consultant
 from agents.code_generator import run_code_generator
+from agents.agent_setup import get_dataset_preview
 
 # --- Configuração da Página e Estado da Sessão ---
 st.set_page_config(layout="wide", page_title="InsightAgent EDA")
@@ -114,17 +116,43 @@ if st.session_state.df is not None:
     for message in st.session_state.messages:
         display_chat_message(message["role"], message["content"], message.get("chart_fig"))
 
-    # Exemplos de perguntas
+    # --- Sugestões Dinâmicas de Perguntas ---
     st.subheader("Sugestões de Perguntas:")
-    suggestions = [
-        "Quais são os tipos de dados e estatísticas básicas deste dataset?",
-        "Mostre a distribuição das variáveis numéricas em histogramas.",
-        "Existe correlação entre as variáveis? Mostre um heatmap.",
-        "Identifique outliers nos dados e explique o impacto.",
-        "Quais são suas principais conclusões sobre este dataset?",
-        "Gere o código Python para reproduzir esta análise de correlação.",
-        "Crie um notebook Jupyter com todas as análises realizadas."
-    ]
+
+    # Gerar sugestões baseadas no histórico da conversa ATUAL
+    if st.session_state.conversation_history.strip():
+        try:
+            dataset_preview = get_dataset_preview(st.session_state.df)
+
+            # Extrair contexto da conversa para melhorar as sugestões
+            conversation_context = extract_conversation_context(st.session_state.conversation_history)
+
+            # Adicionar contexto ao histórico para o agente
+            enriched_history = st.session_state.conversation_history
+            if conversation_context["analysis_types"]:
+                enriched_history += f"\n\nTipos de análise realizados: {', '.join(conversation_context['analysis_types'])}"
+            if conversation_context["agents_used"]:
+                enriched_history += f"\nAgentes utilizados: {', '.join(conversation_context['agents_used'])}"
+
+            suggestions = generate_dynamic_suggestions(
+                api_key=config["google_api_key"],
+                dataset_preview=dataset_preview,
+                conversation_history=enriched_history
+            )
+
+            # Debug: mostrar contexto extraído (apenas em modo debug)
+            if DEBUG_MODE:
+                st.write("**Debug - Contexto da conversa:**")
+                st.json(conversation_context)
+
+        except Exception as e:
+            st.warning(f"Erro ao gerar sugestões dinâmicas: {e}")
+            suggestions = get_fallback_suggestions()
+    else:
+        # Se não há histórico, usar sugestões padrão
+        suggestions = get_fallback_suggestions()
+
+    # Exibir apenas as primeiras 3 sugestões
     cols = st.columns(3)
     for i, suggestion in enumerate(suggestions[:3]):
         if cols[i].button(suggestion, use_container_width=True):
@@ -308,7 +336,8 @@ if st.session_state.df is not None:
                     if DEBUG_MODE:
                         st.write("🔍 DEBUG: Nenhum código gerado, exibindo mensagem normal...")
                     display_chat_message("assistant", bot_response_content, chart_figure, generated_code=generated_code)
-                # Atualiza o histórico de texto
+
+                # Atualiza o histórico de texto APÓS processar a resposta
                 st.session_state.conversation_history += f"Assistente: {bot_response_content}\n"
 
                 # 4. Salva no Supabase
@@ -342,9 +371,8 @@ if st.session_state.df is not None:
                         st.warning(f"⚠️ Código executado com sucesso, mas houve problema ao salvar: {str(db_error)}")
                         # Não interromper o fluxo principal
 
-                # Recarrega a página para exibir a nova mensagem APENAS se não há código para executar
-                if not generated_code:
-                    st.rerun()
+                # Sempre recarregar a página para atualizar as sugestões com o novo histórico
+                st.rerun()
 
             except Exception as e:
                 st.error(f"Ocorreu um erro inesperado: {e}")
