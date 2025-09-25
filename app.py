@@ -19,6 +19,7 @@ from agents.coordinator import run_coordinator
 from agents.data_analyst import run_data_analyst
 from agents.visualization import run_visualization
 from agents.consultant import run_consultant
+from agents.code_generator import run_code_generator
 
 # --- Configuração da Página e Estado da Sessão ---
 st.set_page_config(layout="wide", page_title="InsightAgent EDA")
@@ -211,7 +212,8 @@ if st.session_state.df is not None:
                         dataset_info=str(st.session_state.df_info),
                         analysis_to_convert=analysis_context
                     )
-                    bot_response_content = f"Claro, aqui está o código Python para a sua análise:\n```python\n{generated_code}\n```"
+                    # Não incluir o código na resposta - ele será exibido automaticamente na interface
+                    bot_response_content = "💡 Código Gerado: Este código será executado automaticamente na própria interface!"
 
                 else:
                     bot_response_content = "Desculpe, não entendi qual agente usar. Poderia reformular sua pergunta?"
@@ -318,13 +320,27 @@ if st.session_state.df is not None:
                 )
 
                 if generated_code:
-                    memory.store_generated_code(
-                        session_id=st.session_state.session_id,
-                        conversation_id=conv_id,
-                        code_type='visualization' if agent_to_call == "VisualizationAgent" else 'analysis',
-                        python_code=generated_code,
-                        description=question_for_agent
-                    )
+                    # Tentar salvar o código gerado, mas com proteção contra timeout
+                    try:
+                        # Verificar se o código é muito longo (limite de 5000 caracteres)
+                        if len(generated_code) > 5000:
+                            # Truncar o código para evitar timeout
+                            truncated_code = generated_code[:5000] + "\n\n# ... (código truncado para evitar timeout no banco de dados)"
+                            code_to_save = truncated_code
+                        else:
+                            code_to_save = generated_code
+
+                        memory.store_generated_code(
+                            session_id=st.session_state.session_id,
+                            conversation_id=conv_id,
+                            code_type='visualization' if agent_to_call == "VisualizationAgent" else 'analysis',
+                            python_code=code_to_save,
+                            description=question_for_agent
+                        )
+                    except Exception as db_error:
+                        # Se houver erro no banco, apenas logar e continuar
+                        st.warning(f"⚠️ Código executado com sucesso, mas houve problema ao salvar: {str(db_error)}")
+                        # Não interromper o fluxo principal
 
                 # Recarrega a página para exibir a nova mensagem APENAS se não há código para executar
                 if not generated_code:

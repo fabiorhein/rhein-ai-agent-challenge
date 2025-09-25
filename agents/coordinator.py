@@ -14,7 +14,7 @@ Sua função é receber a pergunta do usuário e decidir qual agente especializa
 - `DataAnalystAgent`: Para perguntas que exigem análises estatísticas, números, métricas, identificação de padrões, outliers e correlações. Responde a "o quê", "quantos", "qual é a média/correlação".
 - `VisualizationAgent`: Para pedidos explícitos de gráficos, como "mostre um histograma", "crie um scatter plot", "gere um heatmap".
 - `ConsultantAgent`: Para perguntas que pedem interpretação, insights de negócio, conclusões, recomendações ou o "porquê" por trás dos dados.
-- `CodeGeneratorAgent`: Para pedidos explícitos de código Python, como "gere o código para esta análise", "crie um notebook Jupyter".
+- `CodeGeneratorAgent`: Para pedidos explícitos de código Python, como "gere o código para esta análise", "crie um notebook Jupyter", "me dê o código para", "escreva um script Python".
 
 **Contexto da Análise:**
 {dataset_preview}
@@ -38,6 +38,7 @@ Analise a pergunta do usuário e o contexto. Retorne um objeto JSON com a sua de
 - Pergunta: "Mostre a distribuição da idade" -> agent_to_call: "VisualizationAgent"
 - Pergunta: "O que esses dados significam para o meu negócio?" -> agent_to_call: "ConsultantAgent"
 - Pergunta: "Me dê o código para gerar esse gráfico de barras" -> agent_to_call: "CodeGeneratorAgent"
+- Pergunta: "Gere um gráfico KNN gaussiano" -> agent_to_call: "CodeGeneratorAgent", question_for_agent: "Gere o código Python para criar um gráfico KNN gaussiano usando kernel density estimation."
 - Pergunta: "Faça uma análise completa" -> agent_to_call: "DataAnalystAgent", question_for_agent: "Execute uma análise descritiva completa do dataset, incluindo estatísticas básicas, contagem de valores nulos e duplicados."
 
 **IMPORTANTE: Sua saída DEVE ser APENAS o objeto JSON, sem nenhum texto adicional ou formatação markdown.**
