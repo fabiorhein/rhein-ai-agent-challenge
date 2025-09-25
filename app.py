@@ -68,17 +68,9 @@ if uploaded_file is not None:
     if st.session_state.df is None:
         with st.spinner("Processando seu CSV... Isso pode levar um momento."):
             try:
-                # Debug: mostrar informações do arquivo
-                st.sidebar.write(f"**Debug - Nome do arquivo:** {uploaded_file.name}")
-                st.sidebar.write(f"**Debug - Tamanho do arquivo:** {uploaded_file.size} bytes")
-
                 df, file_hash = load_csv(uploaded_file)
                 st.session_state.df = df
                 st.session_state.df_info = get_dataset_info(df, uploaded_file.name)
-
-                # Debug: mostrar informações do dataframe
-                st.sidebar.write(f"**Debug - Shape do DataFrame:** {df.shape}")
-                st.sidebar.write(f"**Debug - Colunas:** {list(df.columns)}")
 
                 # Cria uma nova sessão no Supabase
                 session_id = memory.create_session(
@@ -96,7 +88,8 @@ if uploaded_file is not None:
                 st.error(f"Erro ao carregar o arquivo: {e}")
                 st.session_state.df = None
     else:
-        st.sidebar.info("Dataset já carregado. Faça suas perguntas na área principal.")
+        # Dataset já carregado, não mostrar mensagem de debug
+        pass
 
 # --- Área Principal de Exibição ---
 st.title("🤖 InsightAgent EDA: Seu Assistente de Análise de Dados")
@@ -114,21 +107,7 @@ if st.session_state.df is not None:
 
     # Exibe mensagens do histórico
     for i, message in enumerate(st.session_state.messages):
-        # Debug: mostrar informações da mensagem
-        if DEBUG_MODE:
-            st.write(f"🔍 DEBUG: Exibindo mensagem {i}: {message.get('role')} - chart_fig: {message.get('chart_fig') is not None} - generated_code: {message.get('generated_code') is not None}")
-
-        # Verificar se a mensagem tem gráfico válido antes de exibir
-        chart_to_display = message.get("chart_fig")
-        if chart_to_display and DEBUG_MODE:
-            try:
-                chart_to_display.to_json()
-                st.write(f"🔍 DEBUG: Gráfico {i} é válido")
-            except Exception as e:
-                st.write(f"🔍 DEBUG: Gráfico {i} é inválido: {str(e)}")
-                chart_to_display = None
-
-        display_chat_message(message["role"], message["content"], chart_to_display, generated_code=message.get("generated_code"))
+        display_chat_message(message["role"], message["content"], message.get("chart_fig"), generated_code=message.get("generated_code"))
 
     # --- Sugestões Dinâmicas de Perguntas ---
     st.subheader("Sugestões de Perguntas:")
@@ -153,11 +132,6 @@ if st.session_state.df is not None:
                 dataset_preview=dataset_preview,
                 conversation_history=enriched_history
             )
-
-            # Debug: mostrar contexto extraído (apenas em modo debug)
-            if DEBUG_MODE:
-                st.write("**Debug - Contexto da conversa:**")
-                st.json(conversation_context)
 
         except Exception as e:
             st.warning(f"Erro ao gerar sugestões dinâmicas: {e}")
@@ -270,9 +244,6 @@ if st.session_state.df is not None:
 
                 # Executar código automaticamente se foi gerado
                 if generated_code:
-                    if DEBUG_MODE:
-                        st.write("🔍 DEBUG: Código detectado, iniciando execução...")
-
                     # Exibir código com containers para execução
                     with st.chat_message("assistant"):
                         st.markdown(bot_response_content)
@@ -284,8 +255,6 @@ if st.session_state.df is not None:
                         if chart_figure and agent_to_call == "VisualizationAgent":
                             try:
                                 st.plotly_chart(chart_figure, use_container_width=True)
-                                if DEBUG_MODE:
-                                    st.write("🔍 DEBUG: Gráfico exibido com sucesso na execução inicial!")
                             except Exception as e:
                                 st.warning(f"⚠️ Erro ao exibir gráfico na execução inicial: {str(e)}")
 
@@ -295,11 +264,7 @@ if st.session_state.df is not None:
                         try:
                             # Verificar se o gráfico é serializável
                             chart_figure.to_json()
-                            if DEBUG_MODE:
-                                st.write("🔍 DEBUG: Gráfico é válido e serializável!")
                         except Exception as e:
-                            if DEBUG_MODE:
-                                st.write(f"🔍 DEBUG: Gráfico não é serializável: {str(e)}")
                             # Manter o gráfico mesmo se não for serializável
                             pass
 
@@ -309,8 +274,7 @@ if st.session_state.df is not None:
                         try:
                             chart_to_save = copy.deepcopy(chart_to_save)
                         except Exception as e:
-                            if DEBUG_MODE:
-                                st.write(f"🔍 DEBUG: Não foi possível fazer deepcopy do gráfico: {str(e)}")
+                            pass
 
                     st.session_state.messages.append({
                         "role": "assistant",
@@ -318,9 +282,6 @@ if st.session_state.df is not None:
                         "chart_fig": chart_to_save,
                         "generated_code": generated_code
                     })
-
-                    if DEBUG_MODE:
-                        st.write(f"🔍 DEBUG: Gráfico salvo no histórico: {chart_to_save is not None}")
 
                     if execution_container is None:
                         st.error("❌ Erro: Containers não foram criados corretamente!")
@@ -349,14 +310,8 @@ if st.session_state.df is not None:
                                 st.error("Erro: Nenhum DataFrame disponível para análise.")
                                 # Não usar return, continuar com o fluxo
 
-                            if DEBUG_MODE:
-                                st.write("🔍 DEBUG: Ambiente de execução criado, executando código...")
-
                             # Executar o código
                             exec(generated_code, local_scope)
-
-                            if DEBUG_MODE:
-                                st.write("🔍 DEBUG: Código executado, verificando resultados...")
 
                             # Verificar se foi gerada uma figura
                             if 'fig' in local_scope:
@@ -371,15 +326,9 @@ if st.session_state.df is not None:
                                 st.session_state.messages[-1]["chart_fig"] = fig
                                 chart_figure = fig
 
-                                if DEBUG_MODE:
-                                    st.write("🔍 DEBUG: Figura gerada e exibida com sucesso!")
-
                             else:
                                 execution_container.markdown("**Status:** ✅ Código executado com sucesso!")
                                 results_container.markdown("**Resultados:** Código executado sem gerar visualização específica.")
-
-                                if DEBUG_MODE:
-                                    st.write("🔍 DEBUG: Código executado sem gerar figura!")
 
                             # Capturar outras saídas importantes
                             if 'result' in local_scope:
@@ -395,12 +344,7 @@ if st.session_state.df is not None:
                             execution_container.markdown("**Status:** ✅ Código executado com sucesso!")
                             results_container.markdown("**Resultados:** Gráfico gerado automaticamente acima.")
 
-                            if DEBUG_MODE:
-                                st.write("🔍 DEBUG: Código já executado pelo VisualizationAgent!")
-
                 else:
-                    if DEBUG_MODE:
-                        st.write("🔍 DEBUG: Nenhum código gerado, exibindo mensagem normal...")
                     # Para agentes sem código, usar display_chat_message normalmente
                     display_chat_message("assistant", bot_response_content, chart_figure, generated_code=None)
 
@@ -502,10 +446,6 @@ if st.session_state.df is not None:
                                 for i, suggestion in enumerate(new_suggestions[:3]):
                                     if cols[i].button(suggestion, use_container_width=True, key=f"suggestion_{i}_{len(st.session_state.messages)}"):
                                         st.session_state.last_question = suggestion
-
-                                if DEBUG_MODE:
-                                    st.write("**Debug - Novas sugestões geradas:**")
-                                    st.json(conversation_context)
 
                             except Exception as e:
                                 st.warning(f"Erro ao atualizar sugestões: {e}")
