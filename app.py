@@ -91,6 +91,17 @@ if uploaded_file is not None:
         # Dataset já carregado, não mostrar mensagem de debug
         pass
 
+# Verificação: se não há arquivo carregado mas há dados no estado, limpar automaticamente
+if uploaded_file is None and st.session_state.get('df') is not None:
+    st.sidebar.info("📤 Nenhum arquivo carregado. Os dados foram limpos automaticamente.")
+    # Limpar dados automaticamente
+    st.session_state.df = None
+    st.session_state.df_info = None
+    st.session_state.session_id = None
+    st.session_state.messages = []
+    st.session_state.conversation_history = ""
+    st.session_state.all_analyses_history = ""
+
 # --- Área Principal de Exibição ---
 st.title("🤖 InsightAgent EDA: Seu Assistente de Análise de Dados")
 st.markdown("Faça o upload de um arquivo CSV na barra lateral para começar a explorar seus dados.")

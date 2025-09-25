@@ -18,6 +18,18 @@ def build_sidebar(memory, user_id):
             key=unique_key
         )
 
+        # Botão para limpar dados
+        if st.button("🗑️ Limpar Dados", type="secondary"):
+            # Limpar todas as variáveis de sessão relacionadas ao dataset
+            st.session_state.df = None
+            st.session_state.df_info = None
+            st.session_state.session_id = None
+            st.session_state.messages = []
+            st.session_state.conversation_history = ""
+            st.session_state.all_analyses_history = ""
+            st.success("✅ Dados limpos com sucesso!")
+            st.rerun()
+
         st.subheader("Histórico de Sessões")
         sessions = memory.get_user_sessions(user_id)
         if sessions:
