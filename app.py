@@ -11,7 +11,7 @@ import time
 from utils.config import get_config
 from utils.memory import SupabaseMemory
 from utils.data_loader import load_csv, get_dataset_info
-from components.ui_components import build_sidebar, display_chat_message
+from components.ui_components import build_sidebar, display_chat_message, display_code_with_streamlit_suggestion
 from components.notebook_generator import create_jupyter_notebook
 from components.suggestion_generator import generate_dynamic_suggestions, get_fallback_suggestions, extract_conversation_context
 
@@ -114,7 +114,7 @@ if st.session_state.df is not None:
 
     # Exibe mensagens do histórico
     for message in st.session_state.messages:
-        display_chat_message(message["role"], message["content"], message.get("chart_fig"))
+        display_chat_message(message["role"], message["content"], message.get("chart_fig"), generated_code=message.get("generated_code"))
 
     # --- Sugestões Dinâmicas de Perguntas ---
     st.subheader("Sugestões de Perguntas:")
@@ -219,11 +219,15 @@ if st.session_state.df is not None:
                                 st.session_state.all_analyses_history += f"Visualização Gerada: {question_for_agent}\n"
                             else:
                                 bot_response_content = "O código foi gerado, mas não criou uma figura válida. Verifique se o código define uma variável 'fig'."
+                        except SyntaxError as se:
+                            bot_response_content = f"Erro de sintaxe no código gerado: {se}\n\nCódigo com erro:\n```python\n{generated_code}\n```"
+                        except NameError as ne:
+                            bot_response_content = f"Erro: variável não definida no código: {ne}\n\nCódigo com erro:\n```python\n{generated_code}\n```"
                         except Exception as e:
-                            bot_response_content = f"Desculpe, não consegui executar o código do gráfico. Erro: {e}\n\nCódigo que tentei executar:\n```python\n{generated_code}\n```"
+                            bot_response_content = f"Erro ao executar código do gráfico: {e}\n\nCódigo que falhou:\n```python\n{generated_code}\n```"
 
                     except Exception as e:
-                        bot_response_content = f"Desculpe, não consegui gerar o gráfico devido a um erro no agente de visualização: {e}\n\nTente reformular sua pergunta ou verifique se sua chave da API do Google está configurada corretamente."
+                        bot_response_content = f"Erro no agente de visualização: {e}\n\nTente reformular sua pergunta ou verifique se sua chave da API do Google está configurada corretamente."
 
                 elif agent_to_call == "ConsultantAgent":
                     bot_response_content = run_consultant(
@@ -250,103 +254,133 @@ if st.session_state.df is not None:
                 execution_container = None
                 results_container = None
 
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": bot_response_content,
-                    "chart_fig": chart_figure,
-                    "generated_code": generated_code if generated_code else None
-                })
-
                 # Executar código automaticamente se foi gerado
                 if generated_code:
                     if DEBUG_MODE:
                         st.write("🔍 DEBUG: Código detectado, iniciando execução...")
 
-                    # Capturar containers para execução
-                    execution_container, results_container = display_chat_message("assistant", bot_response_content, chart_figure, generated_code=generated_code)
+                    # Exibir código com containers para execução
+                    with st.chat_message("assistant"):
+                        st.markdown(bot_response_content)
+
+                        # Sempre exibir o código gerado
+                        execution_container, results_container = display_code_with_streamlit_suggestion(generated_code, auto_execute=True)
+
+                        # Exibir gráfico se houver (do VisualizationAgent)
+                        if chart_figure:
+                            st.plotly_chart(chart_figure, use_container_width=True)
+
+                    # Atualizar a mensagem no histórico
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": bot_response_content,
+                        "chart_fig": chart_figure,
+                        "generated_code": generated_code
+                    })
 
                     if execution_container is None:
                         st.error("❌ Erro: Containers não foram criados corretamente!")
                         # Não usar return aqui, continuar a execução
 
-                    # Executar o código gerado
-                    try:
-                        execution_container.markdown("**Status:** 🔄 Executando código Python gerado...")
+                    # Executar o código gerado (apenas para CodeGeneratorAgent)
+                    if agent_to_call == "CodeGeneratorAgent":
+                        try:
+                            execution_container.markdown("**Status:** 🔄 Executando código Python gerado...")
 
-                        # Criar ambiente seguro para execução
-                        local_scope = {
-                            "df": st.session_state.df,
-                            "pd": pd,
-                            "px": px,
-                            "go": go,
-                            "st": st,
-                            "plt": plt,
-                            "np": np
-                        }
+                            # Criar ambiente seguro para execução
+                            local_scope = {
+                                "df": st.session_state.df,
+                                "pd": pd,
+                                "px": px,
+                                "go": go,
+                                "st": st,
+                                "plt": plt,
+                                "np": np
+                            }
 
-                        # Verificar se o DataFrame está disponível
-                        if st.session_state.df is None:
-                            execution_container.markdown("**Status:** ❌ Erro: DataFrame não encontrado!")
-                            results_container.markdown("**Erro:** Nenhum arquivo CSV foi carregado.")
-                            st.error("Erro: Nenhum DataFrame disponível para análise.")
-                            # Não usar return, continuar com o fluxo
-
-                        if DEBUG_MODE:
-                            st.write("🔍 DEBUG: Ambiente de execução criado, executando código...")
-
-                        # Executar o código
-                        exec(generated_code, local_scope)
-
-                        if DEBUG_MODE:
-                            st.write("🔍 DEBUG: Código executado, verificando resultados...")
-
-                        # Verificar se foi gerada uma figura
-                        if 'fig' in local_scope:
-                            execution_container.markdown("**Status:** ✅ Código executado com sucesso!")
-                            results_container.markdown("**Resultados:** Visualização gerada automaticamente:")
-
-                            # Exibir a figura gerada
-                            fig = local_scope['fig']
-                            st.plotly_chart(fig, use_container_width=True)
-
-                            # Atualizar a mensagem para incluir a figura
-                            st.session_state.messages[-1]["chart_fig"] = fig
-                            chart_figure = fig
+                            # Verificar se o DataFrame está disponível
+                            if st.session_state.df is None:
+                                execution_container.markdown("**Status:** ❌ Erro: DataFrame não encontrado!")
+                                results_container.markdown("**Erro:** Nenhum arquivo CSV foi carregado.")
+                                st.error("Erro: Nenhum DataFrame disponível para análise.")
+                                # Não usar return, continuar com o fluxo
 
                             if DEBUG_MODE:
-                                st.write("🔍 DEBUG: Figura gerada e exibida com sucesso!")
+                                st.write("🔍 DEBUG: Ambiente de execução criado, executando código...")
 
-                        else:
-                            execution_container.markdown("**Status:** ✅ Código executado com sucesso!")
-                            results_container.markdown("**Resultados:** Código executado sem gerar visualização específica.")
+                            # Executar o código
+                            exec(generated_code, local_scope)
 
                             if DEBUG_MODE:
-                                st.write("🔍 DEBUG: Código executado sem gerar figura!")
+                                st.write("🔍 DEBUG: Código executado, verificando resultados...")
 
-                        # Capturar outras saídas importantes
-                        if 'result' in local_scope:
-                            results_container.markdown(f"**Valor de retorno:** {local_scope['result']}")
+                            # Verificar se foi gerada uma figura
+                            if 'fig' in local_scope:
+                                execution_container.markdown("**Status:** ✅ Código executado com sucesso!")
+                                results_container.markdown("**Resultados:** Visualização gerada automaticamente:")
 
-                    except Exception as e:
-                        execution_container.markdown(f"**Status:** ❌ Erro na execução: {str(e)}")
-                        results_container.markdown(f"**Detalhes do erro:** {str(e)}")
-                        st.error(f"Erro na execução do código: {e}")
+                                # Exibir a figura gerada
+                                fig = local_scope['fig']
+                                st.plotly_chart(fig, use_container_width=True)
 
-                else:
-                    if DEBUG_MODE:
-                        st.write("🔍 DEBUG: Nenhum código gerado, exibindo mensagem normal...")
-                    display_chat_message("assistant", bot_response_content, chart_figure, generated_code=generated_code)
+                                # Atualizar a mensagem para incluir a figura
+                                st.session_state.messages[-1]["chart_fig"] = fig
+                                chart_figure = fig
+
+                                if DEBUG_MODE:
+                                    st.write("🔍 DEBUG: Figura gerada e exibida com sucesso!")
+
+                            else:
+                                execution_container.markdown("**Status:** ✅ Código executado com sucesso!")
+                                results_container.markdown("**Resultados:** Código executado sem gerar visualização específica.")
+
+                                if DEBUG_MODE:
+                                    st.write("🔍 DEBUG: Código executado sem gerar figura!")
+
+                            # Capturar outras saídas importantes
+                            if 'result' in local_scope:
+                                results_container.markdown(f"**Valor de retorno:** {local_scope['result']}")
+
+                        except Exception as e:
+                            execution_container.markdown(f"**Status:** ❌ Erro na execução: {str(e)}")
+                            results_container.markdown(f"**Detalhes do erro:** {str(e)}")
+                            st.error(f"Erro na execução do código: {e}")
+                    else:
+                        # Para VisualizationAgent, mostrar que o código já foi executado
+                        if execution_container and results_container:
+                            execution_container.markdown("**Status:** ✅ Código executado com sucesso!")
+                            results_container.markdown("**Resultados:** Gráfico gerado automaticamente acima.")
+
+                            if DEBUG_MODE:
+                                st.write("🔍 DEBUG: Código já executado pelo VisualizationAgent!")
 
                 # Atualiza o histórico de texto APÓS processar a resposta
                 st.session_state.conversation_history += f"Assistente: {bot_response_content}\n"
 
                 # 4. Salva no Supabase
-                conv_id = memory.log_conversation(
-                    session_id=st.session_state.session_id,
-                    question=prompt,
-                    answer=bot_response_content,
-                    chart_json=chart_figure.to_json() if chart_figure else None
-                )
+                try:
+                    chart_json = None
+                    if chart_figure:
+                        try:
+                            # Tentar converter o gráfico para JSON, mas com timeout protection
+                            chart_json = chart_figure.to_json()
+                            # Se o JSON for muito grande, truncar para evitar timeout
+                            if len(chart_json) > 50000:  # ~50KB
+                                chart_json = chart_json[:50000] + "\n... (truncado para evitar timeout)"
+                        except Exception as json_error:
+                            # Se não conseguir converter, salvar apenas metadados básicos
+                            st.warning(f"⚠️ Não foi possível converter gráfico para JSON: {str(json_error)}")
+                            chart_json = f"Gráfico gerado ({type(chart_figure).__name__})"
+
+                    conv_id = memory.log_conversation(
+                        session_id=st.session_state.session_id,
+                        question=prompt,
+                        answer=bot_response_content,
+                        chart_json=chart_json
+                    )
+                except Exception as db_error:
+                    st.warning(f"⚠️ Erro ao salvar conversa no banco: {str(db_error)}")
+                    conv_id = None
 
                 if generated_code:
                     # Tentar salvar o código gerado, mas com proteção contra timeout
