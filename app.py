@@ -218,7 +218,7 @@ if st.session_state.df is not None:
                     "content": bot_response_content,
                     "chart_fig": chart_figure
                 })
-                display_chat_message("assistant", bot_response_content, chart_figure, key=f"chart_assistant_{len(st.session_state.messages)-1}")
+                display_chat_message("assistant", bot_response_content, chart_figure)
                 # Atualiza o histórico de texto
                 st.session_state.conversation_history += f"Assistente: {bot_response_content}\n"
 
