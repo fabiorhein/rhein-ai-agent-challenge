@@ -18,6 +18,9 @@ def build_sidebar(memory, user_id):
             key=unique_key
         )
 
+        # Espaço reservado para manter o layout consistente
+        st.markdown("\n\n")
+
         st.subheader("Histórico de Sessões")
         sessions = memory.get_user_sessions(user_id)
         if sessions:
@@ -35,15 +38,19 @@ def build_sidebar(memory, user_id):
 
 def display_chat_message(role, content, chart_fig=None, key=None, generated_code=None):
     """Exibe uma mensagem no chat."""
+    execution_container = None
+    results_container = None
+
     with st.chat_message(role):
         st.markdown(content)
 
         # Sempre exibe o código se estiver disponível (ANTES do gráfico)
         # O código deve aparecer antes do gráfico para melhor UX
         if generated_code and role == "assistant":
-            execution_container, results_container = display_code_with_streamlit_suggestion(generated_code, auto_execute=False)
-            # Retornar os containers para serem usados pelo app.py
-            return execution_container, results_container
+            execution_container, results_container = display_code_with_streamlit_suggestion(
+                generated_code,
+                auto_execute=False
+            )
 
         # Verificar se o gráfico existe e é válido antes de exibir
         if chart_fig and role == "assistant":
@@ -65,7 +72,7 @@ def display_chat_message(role, content, chart_fig=None, key=None, generated_code
                 st.warning(f"⚠️ Erro ao exibir gráfico: {str(e)}")
                 st.info("O gráfico foi gerado mas não pôde ser exibido.")
 
-    return None, None
+    return execution_container, results_container
 
 
 def _is_chart_valid(chart_fig):

@@ -11,6 +11,7 @@ import time
 from utils.config import get_config
 from utils.memory import SupabaseMemory
 from utils.data_loader import load_csv, get_dataset_info
+from utils.chart_cache import exec_with_cache  # Import do cache de gráficos
 from components.ui_components import build_sidebar, display_chat_message, display_code_with_streamlit_suggestion
 from components.notebook_generator import create_jupyter_notebook
 from components.suggestion_generator import generate_dynamic_suggestions, get_fallback_suggestions, extract_conversation_context
@@ -91,6 +92,17 @@ if uploaded_file is not None:
         # Dataset já carregado, não mostrar mensagem de debug
         pass
 
+# Verificação: se não há arquivo carregado mas há dados no estado, limpar automaticamente
+if uploaded_file is None and st.session_state.get('df') is not None:
+    st.sidebar.info("📤 Nenhum arquivo carregado. Os dados foram limpos automaticamente.")
+    # Limpar dados automaticamente
+    st.session_state.df = None
+    st.session_state.df_info = None
+    st.session_state.session_id = None
+    st.session_state.messages = []
+    st.session_state.conversation_history = ""
+    st.session_state.all_analyses_history = ""
+
 # --- Área Principal de Exibição ---
 st.title("🤖 InsightAgent EDA: Seu Assistente de Análise de Dados")
 st.markdown("Faça o upload de um arquivo CSV na barra lateral para começar a explorar seus dados.")
@@ -105,14 +117,37 @@ if st.session_state.df is not None:
     # --- Interface de Chat ---
     st.header("Converse com seus Dados")
 
-    # Exibe mensagens do histórico
+    # Exibe mensagens do histórico (preservar mensagens existentes)
     for i, message in enumerate(st.session_state.messages):
         display_chat_message(message["role"], message["content"], message.get("chart_fig"), generated_code=message.get("generated_code"))
+
+    # Exibir gráfico preservado apenas se ainda não estiver nas mensagens
+    if 'last_chart' in st.session_state and st.session_state.last_chart:
+        assistant_has_chart = any(
+            message.get("role") == "assistant" and message.get("chart_fig") is not None
+            for message in st.session_state.messages
+        )
+
+        if assistant_has_chart:
+            # Evitar duplicação removendo o gráfico preservado redundante
+            del st.session_state.last_chart
+            if 'last_chart_code' in st.session_state:
+                del st.session_state.last_chart_code
+        else:
+            st.success("📊 Gráfico preservado da análise anterior:")
+            try:
+                chart_key = f"preserved_chart_{len(st.session_state.messages)}"
+                st.plotly_chart(st.session_state.last_chart, use_container_width=True, key=chart_key)
+            except Exception as e:
+                st.warning(f"⚠️ Erro ao exibir gráfico preservado: {e}")
+                # Limpar gráfico preservado se houver erro
+                if 'last_chart' in st.session_state:
+                    del st.session_state.last_chart
 
     # --- Sugestões Dinâmicas de Perguntas ---
     st.subheader("Sugestões de Perguntas:")
 
-    # Gerar sugestões baseadas no histórico da conversa ATUAL
+    # Sempre gerar sugestões baseadas no histórico atual
     if st.session_state.conversation_history.strip():
         try:
             dataset_preview = get_dataset_preview(st.session_state.df)
@@ -127,6 +162,7 @@ if st.session_state.df is not None:
             if conversation_context["agents_used"]:
                 enriched_history += f"\nAgentes utilizados: {', '.join(conversation_context['agents_used'])}"
 
+            # Gerar novas sugestões sempre com o histórico atualizado
             suggestions = generate_dynamic_suggestions(
                 api_key=config["google_api_key"],
                 dataset_preview=dataset_preview,
@@ -134,20 +170,27 @@ if st.session_state.df is not None:
             )
 
         except Exception as e:
-            st.warning(f"Erro ao gerar sugestões dinâmicas: {e}")
+            st.error(f"❌ **Erro ao gerar sugestões:** {e}")
             suggestions = get_fallback_suggestions()
+            st.warning(f"📝 **Usando sugestões padrão:** {len(suggestions)} sugestões")
     else:
         # Se não há histórico, usar sugestões padrão
         suggestions = get_fallback_suggestions()
 
-    # Exibir apenas as primeiras 3 sugestões
+    # Garantir que sempre tenhamos sugestões
+    if not suggestions:
+        suggestions = get_fallback_suggestions()
+        st.error("⚠️ **Fallback ativado: usando sugestões padrão**")
+
+    # Exibir as sugestões
+    st.write(f"🔍 **Mostrando {len(suggestions[:3])} sugestões:**")
     cols = st.columns(3)
     for i, suggestion in enumerate(suggestions[:3]):
-        if cols[i].button(suggestion, use_container_width=True):
+        if cols[i].button(suggestion, use_container_width=True, key=f"suggestion_{i}"):
             st.session_state.last_question = suggestion
 
     if prompt := st.chat_input("Faça sua pergunta sobre os dados...") or st.session_state.get('last_question'):
-        st.session_state.last_question = None  # Limpa a sugestão
+        st.session_state.last_question = None  # Limpa a sugestão imediatamente
 
         # Adiciona a pergunta do usuário ao histórico e exibe
         st.session_state.messages.append({"role": "user", "content": prompt})
@@ -195,12 +238,10 @@ if st.session_state.df is not None:
                             user_request=question_for_agent
                         )
 
-                        # Tenta executar o código para gerar o gráfico
+                        # Tenta executar o código para gerar o gráfico usando cache
                         try:
-                            # Cuidado: exec é poderoso. Usar com cautela.
-                            local_scope = {"df": st.session_state.df, "pd": pd, "px": px, "go": go}
-                            exec(generated_code, local_scope)
-                            chart_figure = local_scope.get('fig')
+                            # Usar cache otimizado para gráficos
+                            chart_figure = exec_with_cache(generated_code, st.session_state.df)
 
                             if chart_figure:
                                 bot_response_content = "Aqui está a visualização que você pediu."
@@ -254,7 +295,9 @@ if st.session_state.df is not None:
                         # Exibir gráfico APENAS se foi gerado pelo VisualizationAgent (evita duplicação)
                         if chart_figure and agent_to_call == "VisualizationAgent":
                             try:
-                                st.plotly_chart(chart_figure, use_container_width=True)
+                                # Usar chave única para evitar re-renderização
+                                chart_key = f"chart_{len(st.session_state.messages)}_{hash(str(chart_figure))}"
+                                st.plotly_chart(chart_figure, use_container_width=True, key=chart_key)
                             except Exception as e:
                                 st.warning(f"⚠️ Erro ao exibir gráfico na execução inicial: {str(e)}")
 
@@ -268,13 +311,8 @@ if st.session_state.df is not None:
                             # Manter o gráfico mesmo se não for serializável
                             pass
 
-                    # Criar uma cópia profunda do gráfico para evitar problemas de referência
-                    import copy
-                    if chart_to_save:
-                        try:
-                            chart_to_save = copy.deepcopy(chart_to_save)
-                        except Exception as e:
-                            pass
+                    # Remover deep copy para melhorar performance
+                    # chart_to_save = copy.deepcopy(chart_to_save) se necessário
 
                     st.session_state.messages.append({
                         "role": "assistant",
@@ -310,8 +348,8 @@ if st.session_state.df is not None:
                                 st.error("Erro: Nenhum DataFrame disponível para análise.")
                                 # Não usar return, continuar com o fluxo
 
-                            # Executar o código
-                            exec(generated_code, local_scope)
+                            # Executar o código usando cache otimizado
+                            exec_with_cache(generated_code, local_scope)
 
                             # Verificar se foi gerada uma figura
                             if 'fig' in local_scope:
@@ -320,7 +358,9 @@ if st.session_state.df is not None:
 
                                 # Exibir a figura gerada
                                 fig = local_scope['fig']
-                                st.plotly_chart(fig, use_container_width=True)
+                                # Usar chave única para evitar re-renderização
+                                fig_key = f"code_chart_{len(st.session_state.messages)}_{id(fig)}"
+                                st.plotly_chart(fig, use_container_width=True, key=fig_key)
 
                                 # Atualizar a mensagem para incluir a figura
                                 st.session_state.messages[-1]["chart_fig"] = fig
@@ -359,16 +399,19 @@ if st.session_state.df is not None:
                 # Atualiza o histórico de texto APÓS processar a resposta
                 st.session_state.conversation_history += f"Assistente: {bot_response_content}\n"
 
+                # Forçar atualização das sugestões na próxima renderização
+                st.session_state.suggestions = []  # Forçar regeneração
+
                 # 4. Salva no Supabase
                 try:
                     chart_json = None
                     if chart_figure:
                         try:
-                            # Tentar converter o gráfico para JSON, mas com timeout protection
+                            # Converter gráfico para JSON com timeout protection
                             chart_json = chart_figure.to_json()
                             # Se o JSON for muito grande, truncar para evitar timeout
-                            if len(chart_json) > 50000:  # ~50KB
-                                chart_json = chart_json[:50000] + "\n... (truncado para evitar timeout)"
+                            if len(chart_json) > 10000:  # Reduzir limite para ~10KB
+                                chart_json = chart_json[:10000] + "\n... (truncado para evitar timeout)"
                         except Exception as json_error:
                             # Se não conseguir converter, salvar apenas metadados básicos
                             st.warning(f"⚠️ Não foi possível converter gráfico para JSON: {str(json_error)}")
@@ -409,56 +452,43 @@ if st.session_state.df is not None:
 
                 # Recarregar a página para atualizar as sugestões com o novo histórico
                 # Mas apenas se estivermos em modo debug OU se não houver gráfico para evitar problemas
-                should_rerun = True
+                should_rerun = False  # Otimização: reduzir reruns desnecessários
 
                 if chart_figure:
                     # Se há gráfico, só fazer rerun em modo debug para evitar problemas de renderização
                     if DEBUG_MODE:
                         st.success("✅ Resposta processada com sucesso! (Gráfico preservado - rerun em modo debug)")
-                        st.rerun()
+                        should_rerun = True
                     else:
                         st.success("✅ Resposta processada com sucesso!")
-                        # Forçar atualização das sugestões sem rerun
                         should_rerun = False
-                        st.info("🔄 Atualizando sugestões dinâmicas...")
-
-                        # Forçar reavaliação das sugestões
-                        if st.session_state.conversation_history.strip():
-                            try:
-                                dataset_preview = get_dataset_preview(st.session_state.df)
-                                conversation_context = extract_conversation_context(st.session_state.conversation_history)
-                                enriched_history = st.session_state.conversation_history
-                                if conversation_context["analysis_types"]:
-                                    enriched_history += f"\n\nTipos de análise realizados: {', '.join(conversation_context['analysis_types'])}"
-                                if conversation_context["agents_used"]:
-                                    enriched_history += f"\nAgentes utilizados: {', '.join(conversation_context['agents_used'])}"
-
-                                # Gerar novas sugestões baseadas no histórico atualizado
-                                new_suggestions = generate_dynamic_suggestions(
-                                    api_key=config["google_api_key"],
-                                    dataset_preview=dataset_preview,
-                                    conversation_history=enriched_history
-                                )
-
-                                # Mostrar sugestões atualizadas
-                                st.subheader("📝 Sugestões Atualizadas:")
-                                cols = st.columns(3)
-                                for i, suggestion in enumerate(new_suggestions[:3]):
-                                    if cols[i].button(suggestion, use_container_width=True, key=f"suggestion_{i}_{len(st.session_state.messages)}"):
-                                        st.session_state.last_question = suggestion
-
-                            except Exception as e:
-                                st.warning(f"Erro ao atualizar sugestões: {e}")
                 else:
                     # Se não há gráfico, rerun é seguro
                     if DEBUG_MODE:
                         st.success("✅ Resposta processada com sucesso! (Sem gráfico - rerun em modo debug)")
                     else:
                         st.success("✅ Resposta processada com sucesso!")
-                    should_rerun = True
+                    should_rerun = False  # Otimização: evitar rerun desnecessário
 
-                if should_rerun and not DEBUG_MODE:
+                if should_rerun and DEBUG_MODE:
                     st.rerun()
+
+                # FORÇAR ATUALIZAÇÃO DAS SUGESTÕES APÓS CADA RESPOSTA
+                st.success("✅ Resposta processada com sucesso!")
+                st.info("🔄 Atualizando sugestões com o novo contexto...")
+
+                # Preservar gráficos antes do re-run
+                if chart_figure:
+                    st.session_state.last_chart = chart_figure
+                    st.session_state.last_chart_code = generated_code
+
+                st.rerun()  # Forçar re-run para atualizar sugestões
+
+                # Limpar gráficos preservados após o re-run bem-sucedido
+                if 'last_chart' in st.session_state:
+                    del st.session_state.last_chart
+                if 'last_chart_code' in st.session_state:
+                    del st.session_state.last_chart_code
 
             except Exception as e:
                 st.error(f"Ocorreu um erro inesperado: {e}")
