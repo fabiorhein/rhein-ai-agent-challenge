@@ -31,11 +31,37 @@ def get_data_analyst_agent(api_key: str):
     return chain
 
 def run_data_analyst(api_key: str, df: pd.DataFrame, analysis_context: str, specific_question: str):
-    agent = get_data_analyst_agent(api_key)
-    dataset_preview = get_dataset_preview(df)
-    response = agent.invoke({
-        "dataset_preview": dataset_preview,
-        "analysis_context": analysis_context,
-        "specific_question": specific_question
-    })
-    return response
+    try:
+        # Verifica se o DataFrame está vazio
+        if df.empty:
+            return "Erro: O DataFrame está vazio. Não é possível realizar a análise."
+            
+        # Verifica se a pergunta específica foi fornecida
+        if not specific_question or not specific_question.strip():
+            return "Erro: Nenhuma pergunta específica foi fornecida para análise."
+            
+        # Obtém o agente e os dados
+        agent = get_data_analyst_agent(api_key)
+        dataset_preview = get_dataset_preview(df)
+        
+        # Verifica se o preview do dataset foi gerado corretamente
+        if not dataset_preview:
+            return "Erro: Não foi possível gerar o preview do dataset."
+            
+        # Executa a análise
+        response = agent.invoke({
+            "dataset_preview": dataset_preview,
+            "analysis_context": analysis_context or "Nenhum contexto de análise anterior fornecido.",
+            "specific_question": specific_question
+        })
+        
+        # Verifica se a resposta é válida
+        if not response or response.strip() == "undefined":
+            return "Desculpe, não foi possível gerar uma análise para esta pergunta. Por favor, tente reformular sua pergunta."
+            
+        return response
+        
+    except Exception as e:
+        # Log do erro para depuração
+        print(f"Erro no DataAnalystAgent: {str(e)}")
+        return f"Ocorreu um erro ao processar sua solicitação: {str(e)}"

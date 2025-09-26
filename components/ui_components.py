@@ -1,7 +1,10 @@
 import streamlit as st
 import pandas as pd
 import time
-import hashlib 
+import hashlib
+from datetime import datetime, timezone, timedelta
+
+
 
 def build_sidebar(memory, user_id):
     """Constrói a sidebar do aplicativo."""
@@ -18,21 +21,43 @@ def build_sidebar(memory, user_id):
             key=unique_key
         )
 
-        # Espaço reservado para manter o layout consistente
-        st.markdown("\n\n")
-
         st.subheader("Histórico de Sessões")
         sessions = memory.get_user_sessions(user_id)
         if sessions:
             for session in sessions:
-                st.info(
-                    f"ID: ...{session['id'][-6:]}\nDataset: {session['dataset_name']}\nData: {pd.to_datetime(session['created_at']).strftime('%d/%m/%Y %H:%M')}")
+                try:
+                    # Converte a string de data/hora para um objeto datetime com timezone UTC
+                    # O formato esperado é algo como '2025-09-26T22:26:00.000000+00:00'
+                    created_at_str = session['created_at']
+                    
+                    # Verifica se já tem timezone (deve ter vindo do Supabase com +00:00)
+                    if 'Z' in created_at_str or '+00:00' in created_at_str:
+                        # Se já tiver timezone UTC, converte para objeto datetime com timezone
+                        created_at = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
+                        # Converte para o fuso horário local do sistema
+                        local_time = created_at.astimezone()
+                        # Obtém o offset local formatado (ex: -03:00)
+                        offset = local_time.strftime('%z')
+                        offset_str = f"UTC{offset[:3]}:{offset[3:5]}"
+                    else:
+                        # Se não tiver timezone, assume UTC e converte para local
+                        created_at = datetime.fromisoformat(created_at_str).replace(tzinfo=timezone.utc)
+                        local_time = created_at.astimezone()
+                        offset = local_time.strftime('%z')
+                        offset_str = f"UTC{offset[:3]}:{offset[3:5]}"
+                    
+                    st.info(
+                        f"ID: ...{session['id'][-6:]}\n"
+                        f"Dataset: {session['dataset_name']}\n"
+                        f"Data: {local_time.strftime('%d/%m/%Y %H:%M')} ({offset_str})"
+                    )
+                except Exception as e:
+                    st.error(f"Erro ao exibir sessão: {e}")
         else:
             st.write("Nenhuma sessão anterior encontrada.")
 
         st.subheader("Configurações")
         st.info("Configurações futuras aqui.")
-
     return uploaded_file
 
 

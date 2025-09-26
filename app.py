@@ -67,7 +67,6 @@ uploaded_file = build_sidebar(memory, st.session_state.user_id)
 if uploaded_file is not None:
     st.sidebar.success("Arquivo CSV carregado com sucesso!")
     if st.session_state.df is None:
-        with st.spinner("Processando seu CSV... Isso pode levar um momento."):
             try:
                 df, file_hash = load_csv(uploaded_file)
                 st.session_state.df = df
@@ -79,11 +78,32 @@ if uploaded_file is not None:
                     dataset_hash=file_hash,
                     user_id=st.session_state.user_id
                 )
+                
+                # Define o ID da sessão no estado
                 st.session_state.session_id = session_id
-                st.session_state.messages = []
-                st.session_state.conversation_history = ""
-                st.session_state.all_analyses_history = f"Análise iniciada para o dataset: {uploaded_file.name}\n"
-                st.success("Dataset carregado com sucesso! Pronto para suas perguntas.")
+                
+                # Carrega o histórico da sessão, se existir
+                try:
+                    session_history = memory.get_session_history(session_id)
+                    
+                    # Restaura o histórico de conversas
+                    if session_history["conversations"]:
+                        st.session_state.conversation_history = "\n".join(
+                            f"{'Usuário' if i % 2 == 0 else 'Assistente'}: {msg['question'] if i % 2 == 0 else msg['answer']}"
+                            for i, msg in enumerate(session_history["conversations"])
+                        )
+                    
+                    # Restaura as análises
+                    if session_history["analyses"]:
+                        st.session_state.all_analyses_history = "\n".join(
+                            f"Análise: {analysis['results'].get('analysis', '')}"
+                            for analysis in session_history["analyses"]
+                        )
+                        
+                except Exception as e:
+                    st.error(f"Erro ao carregar histórico da sessão: {e}")
+                    st.session_state.conversation_history = ""
+                    st.session_state.all_analyses_history = f"Análise iniciada para o dataset: {uploaded_file.name}\n"
                 st.rerun()  # Força recarregamento para mostrar o dataset
             except ValueError as e:
                 st.error(f"Erro ao carregar o arquivo: {e}")
@@ -198,6 +218,20 @@ if st.session_state.df is not None:
 
         # Adiciona ao histórico de texto para os agentes
         st.session_state.conversation_history += f"Usuário: {prompt}\n"
+        
+        # Inicializa conversation_id como None
+        conversation_id = None
+        
+        # Registrar a conversa no banco de dados
+        if st.session_state.session_id:
+            try:
+                conversation_id = memory.log_conversation(
+                    session_id=st.session_state.session_id,
+                    question=prompt,
+                    answer=""  # A resposta será atualizada quando estiver pronta
+                )
+            except Exception as e:
+                st.error(f"Erro ao registrar conversa: {e}")
 
         with st.spinner("Analisando e gerando resposta..."):
             try:
@@ -211,6 +245,9 @@ if st.session_state.df is not None:
 
                 agent_to_call = coordinator_decision.get("agent_to_call")
                 question_for_agent = coordinator_decision.get("question_for_agent")
+                
+                # Inicializa conversation_id como None
+                conversation_id = None
 
                 st.info(f"Roteando para: **{agent_to_call}**")
                 time.sleep(1)
@@ -228,6 +265,18 @@ if st.session_state.df is not None:
                         specific_question=question_for_agent
                     )
                     st.session_state.all_analyses_history += f"Análise Estatística:\n{bot_response_content}\n"
+                    
+                    # Armazenar a análise no banco de dados
+                    if st.session_state.session_id:
+                        try:
+                            memory.store_analysis(
+                                session_id=st.session_state.session_id,
+                                conversation_id=conversation_id,
+                                analysis_type="data_analysis",
+                                results={"analysis": bot_response_content}
+                            )
+                        except Exception as e:
+                            st.error(f"Erro ao salvar análise: {e}")
 
                 elif agent_to_call == "VisualizationAgent":
                     try:
@@ -265,6 +314,18 @@ if st.session_state.df is not None:
                         all_analyses=st.session_state.all_analyses_history,
                         user_question=question_for_agent
                     )
+                    
+                    # Armazenar a conclusão no banco de dados
+                    if st.session_state.session_id:
+                        try:
+                            memory.store_conclusion(
+                                session_id=st.session_state.session_id,
+                                conversation_id=conversation_id,
+                                conclusion_text=bot_response_content,
+                                confidence_score=0.9  # Pontuação de confiança padrão
+                            )
+                        except Exception as e:
+                            st.error(f"Erro ao salvar conclusão: {e}")
 
                 elif agent_to_call == "CodeGeneratorAgent":
                     analysis_context = f"Pergunta do usuário: {prompt}\n\nContexto da conversa:\n{st.session_state.all_analyses_history}"
@@ -415,12 +476,32 @@ if st.session_state.df is not None:
                             st.warning(f"⚠️ Não foi possível converter gráfico para JSON: {str(json_error)}")
                             chart_json = f"Gráfico gerado ({type(chart_figure).__name__})"
 
-                    conv_id = memory.log_conversation(
-                        session_id=st.session_state.session_id,
-                        question=prompt,
-                        answer=bot_response_content,
-                        chart_json=chart_json
-                    )
+                    # Inicializa a variável conv_id
+                    conv_id = None
+                    # Atualizar a conversa existente em vez de criar uma nova
+                    if 'conversation_id' in locals() and conversation_id:
+                        try:
+                            # Atualiza a conversa existente
+                            memory.client.table("conversations").update({
+                                "answer": bot_response_content,
+                                "chart_json": chart_json
+                            }).eq("id", conversation_id).execute()
+                            conv_id = conversation_id
+                        except Exception as e:
+                            st.error(f"Erro ao atualizar conversa: {e}")
+                    else:
+                        # Se não tiver um ID de conversa, cria uma nova
+                        try:
+                            # Cria uma nova conversa e pega o ID retornado
+                            conv_response = memory.log_conversation(
+                                session_id=st.session_state.session_id,
+                                question=prompt,
+                                answer=bot_response_content,
+                                chart_json=chart_json
+                            )
+                            conv_id = conv_response  # Atribui o ID retornado
+                        except Exception as e:
+                            st.error(f"Erro ao salvar conversa: {e}")
                 except Exception as db_error:
                     st.warning(f"⚠️ Erro ao salvar conversa no banco: {str(db_error)}")
                     conv_id = None
