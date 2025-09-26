@@ -8,7 +8,8 @@ import plotly.graph_objects as go
 _cache = {}
 
 def exec_with_cache(code, df):
-    key = hashlib.md5(f"{code}_{df.shape}".encode()).hexdigest()
+    # Criar chave mais robusta incluindo o código e as dimensões do DataFrame
+    key = hashlib.md5(f"{code}_{df.shape}_{str(df.columns.tolist())}".encode()).hexdigest()
     if key in _cache:
         return _cache[key]
 
@@ -18,6 +19,7 @@ def exec_with_cache(code, df):
         if 'fig' in local_scope:
             _cache[key] = local_scope['fig']
             return local_scope['fig']
-    except:
+    except Exception as e:
+        print(f"Erro na execução do código em cache: {e}")
         pass
     return None
