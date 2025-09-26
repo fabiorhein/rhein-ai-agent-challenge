@@ -21,46 +21,34 @@ O sistema possui 4 tipos de agentes especializados:
 Analise o histórico da conversa e o contexto do dataset para gerar 3 sugestões de perguntas que sejam:
 1. **Relevantes**: Baseadas no que já foi discutido na conversa
 2. **Progressivas**: Levando a uma análise mais profunda dos tópicos abordados
-3. **Diversificadas**: Incluindo diferentes tipos de agentes (estatística, visualização, insights, código)
-4. **Específicas**: Direcionadas às capacidades específicas dos agentes
+3. **Diversificadas**: Cobrindo diferentes aspectos dos dados (estatística, visualização, insights)
+4. **Específicas**: Direcionadas a análises concretas
 5. **Acionáveis**: Perguntas claras que geram respostas úteis
 
 **Restrições:**
 - Retorne APENAS um JSON válido com a estrutura especificada
 - Não inclua explicações ou texto adicional
 - Mantenha as sugestões concisas (máximo 15 palavras cada)
-- Cada sugestão deve indicar claramente qual agente seria usado
+- NÃO mencione o nome de nenhum agente nas sugestões
 
 **Formato de Saída:**
 {{
   "suggestions": [
-    "Pergunta específica para DataAnalystAgent",
-    "Pergunta específica para VisualizationAgent",
-    "Pergunta específica para ConsultantAgent ou CodeGeneratorAgent"
+    "Pergunta específica sobre análise de dados",
+    "Pergunta específica sobre visualização de dados",
+    "Pergunta específica sobre insights e recomendações"
   ]
 }}
 
-**Exemplos de boas sugestões por tipo de agente:**
-
-**DataAnalystAgent:**
-- "Calcule estatísticas descritivas detalhadas das variáveis numéricas"
-- "Identifique e analise outliers extremos nos dados"
-- "Execute teste de correlação de Spearman entre variáveis"
-
-**VisualizationAgent:**
-- "Crie um scatter plot com linha de tendência para idade vs salario"
-- "Gere um box plot comparativo entre diferentes categorias"
-- "Mostre heatmap de correlação com valores numéricos"
-
-**ConsultantAgent:**
-- "Quais insights de negócio podemos extrair destes dados?"
-- "Como otimizar os resultados baseado nas correlações encontradas?"
-- "Quais recomendações estratégicas você sugere?"
-
-**CodeGeneratorAgent:**
-- "Gere código para automatizar esta análise de correlação"
-- "Crie um notebook Jupyter com todas as visualizações"
-- "Escreva função para detectar outliers automaticamente"
+**Exemplos de boas sugestões:**
+- "Quais são as estatísticas descritivas das variáveis numéricas?"
+- "Existem outliers significativos nos dados?"
+- "Qual é a correlação entre as principais variáveis?"
+- "Mostre a distribuição dos dados em um histograma"
+- "Como as categorias se comparam em termos de desempenho?"
+- "Quais são os principais insights que podemos extrair?"
+- "Quais recomendações podem ser feitas com base nos dados?"
+- "Gere um relatório completo das análises realizadas"
 """
 
 def get_suggestion_generator(api_key: str):
@@ -199,11 +187,11 @@ def extract_conversation_context(conversation_history: str) -> dict:
 def get_fallback_suggestions() -> list:
     """Retorna sugestões padrão quando não há contexto suficiente."""
     return [
-        "Quais são os tipos de dados e estatísticas básicas deste dataset?",
-        "Mostre a distribuição das variáveis numéricas em histogramas.",
-        "Existe correlação entre as variáveis? Mostre um heatmap.",
-        "Identifique outliers nos dados e explique o impacto.",
-        "Quais são suas principais conclusões sobre este dataset?",
-        "Gere o código Python para reproduzir esta análise de correlação.",
-        "Crie um notebook Jupyter com todas as análises realizadas."
+        "Quais são os tipos de dados e estatísticas básicas?",
+        "Mostre a distribuição dos dados em gráficos.",
+        "Existe correlação entre as principais variáveis?",
+        "Há valores atípicos que merecem atenção?",
+        "Quais são as principais descobertas neste conjunto de dados?",
+        "Como as variáveis se relacionam entre si?",
+        "Quais são os próximos passos recomendados para análise?"
     ]
