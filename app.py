@@ -343,7 +343,6 @@ if st.session_state.df is not None:
 
                             # Verificar se o DataFrame está disponível
                             if st.session_state.df is None:
-                                execution_container.markdown("**Status:** ❌ Erro: DataFrame não encontrado!")
                                 results_container.markdown("**Erro:** Nenhum arquivo CSV foi carregado.")
                                 st.error("Erro: Nenhum DataFrame disponível para análise.")
                                 # Não usar return, continuar com o fluxo
@@ -356,7 +355,7 @@ if st.session_state.df is not None:
                                 execution_container.markdown("**Status:** ✅ Código executado com sucesso!")
                                 results_container.markdown("**Resultados:** Visualização gerada automaticamente:")
 
-                                # Exibir a figura gerada
+                                # Exibir a figura gerada APENAS UMA VEZ
                                 fig = local_scope['fig']
                                 # Usar chave única para evitar re-renderização
                                 fig_key = f"code_chart_{len(st.session_state.messages)}_{id(fig)}"
@@ -373,7 +372,6 @@ if st.session_state.df is not None:
                             # Capturar outras saídas importantes
                             if 'result' in local_scope:
                                 results_container.markdown(f"**Valor de retorno:** {local_scope['result']}")
-
                         except Exception as e:
                             execution_container.markdown(f"**Status:** ❌ Erro na execução: {str(e)}")
                             results_container.markdown(f"**Detalhes do erro:** {str(e)}")
@@ -474,15 +472,20 @@ if st.session_state.df is not None:
                     st.rerun()
 
                 # FORÇAR ATUALIZAÇÃO DAS SUGESTÕES APÓS CADA RESPOSTA
-                st.success("✅ Resposta processada com sucesso!")
                 st.info("🔄 Atualizando sugestões com o novo contexto...")
 
-                # Preservar gráficos antes do re-run
+                # Preservar gráficos antes do re-run apenas se necessário
                 if chart_figure:
                     st.session_state.last_chart = chart_figure
                     st.session_state.last_chart_code = generated_code
 
-                st.rerun()  # Forçar re-run para atualizar sugestões
+                # Forçar re-run para atualizar sugestões com o novo contexto
+                # Mas apenas se não estivermos em modo debug para evitar problemas
+                if not DEBUG_MODE:
+                    time.sleep(0.5)  # Pequena pausa para mostrar a mensagem
+                    st.rerun()
+                else:
+                    st.success("✅ Sugestões atualizadas (modo debug - sem re-run)")
 
                 # Limpar gráficos preservados após o re-run bem-sucedido
                 if 'last_chart' in st.session_state:
