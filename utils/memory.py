@@ -24,6 +24,21 @@ class SupabaseMemory:
         return response.data[0]['id']
 
     def store_analysis(self, session_id: str, conversation_id: str | None, analysis_type: str, results: dict):
+        # Garante que temos pelo menos um ID de conversa válido
+        if not conversation_id:
+            # Se não houver conversation_id, cria uma entrada na tabela de conversas
+            conversation = self.client.table("conversations").select("id").eq("session_id", session_id).order("created_at", desc=True).limit(1).execute()
+            if conversation.data:
+                conversation_id = conversation.data[0]['id']
+            else:
+                # Se não houver conversa, cria uma vazia
+                conversation = self.client.table("conversations").insert({
+                    "session_id": session_id,
+                    "question": "Análise automática",
+                    "answer": "Análise gerada pelo sistema"
+                }).execute()
+                conversation_id = conversation.data[0]['id']
+                
         self.client.table("analyses").insert({
             "session_id": session_id,
             "conversation_id": conversation_id,
@@ -33,7 +48,24 @@ class SupabaseMemory:
 
     def store_conclusion(self, session_id: str, conversation_id: str | None, conclusion_text: str,
                          confidence_score: float | None = None):
+        # Garante que temos pelo menos um ID de conversa válido
+        if not conversation_id:
+            # Se não houver conversation_id, tenta obter o mais recente
+            conversation = self.client.table("conversations").select("id").eq("session_id", session_id).order("created_at", desc=True).limit(1).execute()
+            if conversation.data:
+                conversation_id = conversation.data[0]['id']
+            else:
+                # Se não houver conversa, cria uma vazia
+                conversation = self.client.table("conversations").insert({
+                    "session_id": session_id,
+                    "question": "Conclusão automática",
+                    "answer": "Conclusão gerada pelo sistema"
+                }).execute()
+                conversation_id = conversation.data[0]['id']
+                
         self.client.table("conclusions").insert({
+            "session_id": session_id,
+            "conversation_id": conversation_id,
             "conclusion_text": conclusion_text,
             "confidence_score": confidence_score
         }).execute()
