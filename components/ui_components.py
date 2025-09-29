@@ -10,6 +10,26 @@ def build_sidebar(memory, user_id):
     """Constrói a sidebar do aplicativo."""
     with st.sidebar:
         st.header("Análise EDA com IA")
+        
+        # Seletor de Modelo de IA
+        st.subheader("Configurações do Modelo")
+        model_options = {
+            "Gemini Flash (Recomendado)": "gemini-flash",
+            "Hugging Face (Alternativa)": "huggingface"
+        }
+        
+        # Armazena a escolha do modelo na sessão
+        if 'selected_model' not in st.session_state:
+            st.session_state.selected_model = "gemini-flash"
+            
+        selected_model = st.selectbox(
+            "Selecione o Modelo de IA:",
+            options=list(model_options.keys()),
+            index=0  # Define o modelo padrão
+        )
+        
+        # Atualiza o modelo selecionado na sessão
+        st.session_state.selected_model = model_options[selected_model]
 
         # Key única baseada no user_id para manter consistência
         unique_key = f"file_uploader_{user_id}"

@@ -1,7 +1,6 @@
 import os
 import sys
 
-# Verificar se estamos rodando no Python 3.11+ para usar tomllib
 if sys.version_info >= (3, 11):
     import tomllib
 else:
@@ -19,6 +18,8 @@ def get_config():
 
         return {
             "google_api_key": app_config.get("google_api_key"),
+            "hf_api_key": app_config.get("hf_api_key"),  # Nova chave do Hugging Face
+            "default_model": app_config.get("default_model", "gemini-flash"),  # Modelo padrão
             "supabase_url": app_config.get("supabase_url"),
             "supabase_key": app_config.get("supabase_key"),
         }
@@ -27,6 +28,8 @@ def get_config():
         # Fallback para variáveis de ambiente
         return {
             "google_api_key": os.getenv("GOOGLE_API_KEY"),
+            "hf_api_key": os.getenv("HF_API_KEY"),  # Nova variável de ambiente
+            "default_model": os.getenv("DEFAULT_MODEL", "gemini-flash"),
             "supabase_url": os.getenv("SUPABASE_URL"),
             "supabase_key": os.getenv("SUPABASE_KEY"),
         }
@@ -34,6 +37,8 @@ def get_config():
         print(f"Erro ao carregar secrets.toml: {e}")
         return {
             "google_api_key": None,
+            "hf_api_key": None,
+            "default_model": None,
             "supabase_url": None,
             "supabase_key": None,
         }

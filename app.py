@@ -10,53 +10,64 @@ import time
 # Importações dos módulos do projeto
 from utils.config import get_config
 from utils.memory import SupabaseMemory
-from utils.data_loader import load_csv, get_dataset_info
 from utils.chart_cache import exec_with_cache  # Import do cache de gráficos
+from utils.data_loader import load_csv, get_dataset_info  # Import das funções de manipulação de dados
 from components.ui_components import build_sidebar, display_chat_message, display_code_with_streamlit_suggestion
 from components.notebook_generator import create_jupyter_notebook
 from components.suggestion_generator import generate_dynamic_suggestions, get_fallback_suggestions, extract_conversation_context
 
-# Importação dos agentes
+# Importação dos agentes e funções de configuração
 from agents.coordinator import run_coordinator
 from agents.data_analyst import run_data_analyst
 from agents.visualization import run_visualization
 from agents.consultant import run_consultant
 from agents.code_generator import run_code_generator
-from agents.agent_setup import get_dataset_preview
+from agents.agent_setup import get_dataset_preview, get_llm_with_fallback
 
 # --- Configuração da Página e Estado da Sessão ---
 st.set_page_config(layout="wide", page_title="InsightAgent EDA")
 
 # Configuração de debug (pode ser alterada para False em produção)
-DEBUG_MODE = False
+DEBUG = False  # Defina como True para ativar o modo de depuração
+DEBUG_MODE = DEBUG
 
-# Inicializa o estado da sessão
-if 'session_id' not in st.session_state:
-    st.session_state.session_id = None
+# Inicialização das variáveis de sessão
+if 'conversation_history' not in st.session_state:
+    st.session_state.conversation_history = ""
+if 'all_analyses_history' not in st.session_state:
+    st.session_state.all_analyses_history = ""
 if 'user_id' not in st.session_state:
+    # Gera um ID único para o usuário se não existir
     st.session_state.user_id = str(uuid4())
 if 'df' not in st.session_state:
     st.session_state.df = None
 if 'df_info' not in st.session_state:
     st.session_state.df_info = None
 if 'messages' not in st.session_state:
-    st.session_state.messages = []
-if 'conversation_history' not in st.session_state:
-    st.session_state.conversation_history = ""
-if 'all_analyses_history' not in st.session_state:
-    st.session_state.all_analyses_history = ""
+    st.session_state.messages = []  # Lista para armazenar o histórico de mensagens do chat
 
 # --- Carregamento de Configurações e Serviços ---
 config = get_config()
 
-# Verificar se a chave da API está configurada
-if not config["google_api_key"]:
-    st.error("❌ Chave da API do Google não configurada. Por favor, configure a variável de ambiente GOOGLE_API_KEY no arquivo .env")
-    st.stop()
+# Inicializa o modelo selecionado
+if 'selected_model' not in st.session_state:
+    st.session_state.selected_model = config.get("default_model", "gemini-flash")
 
 # Verificar se as configurações do Supabase estão configuradas
 if not config["supabase_url"] or not config["supabase_key"]:
     st.warning("⚠️ Configurações do Supabase não encontradas. Algumas funcionalidades podem não funcionar. Configure SUPABASE_URL e SUPABASE_KEY no arquivo .env")
+
+# Prepara o dicionário de configuração de chaves de API
+api_keys_config = {
+    "google_api_key": config["google_api_key"],
+    "hf_api_key": config["hf_api_key"]
+}
+
+# Inicializa o modelo LLM
+llm = get_llm_with_fallback(
+    api_keys_config=api_keys_config,
+    model_choice=st.session_state.selected_model
+)
 
 memory = SupabaseMemory(url=config["supabase_url"], key=config["supabase_key"])
 
@@ -575,7 +586,14 @@ if st.session_state.df is not None:
                     del st.session_state.last_chart_code
 
             except Exception as e:
-                st.error(f"Ocorreu um erro inesperado: {e}")
+                error_message = str(e)
+                if "You exceeded your current quota" in error_message or "quota exceeded" in error_message.lower():
+                    st.error(
+                        "⚠️ O modelo Gemini atingiu o limite de uso. Tente novamente em alguns instantes ou altere o modelo para **Hugging Face** na barra lateral."
+                    )
+                    st.info("Dica: ao selecionar o modelo Hugging Face, o sistema utilizará o fallback configurado automaticamente.")
+                else:
+                    st.error(f"Ocorreu um erro inesperado: {e}")
 
 # Adiciona um footer
 st.markdown("---")

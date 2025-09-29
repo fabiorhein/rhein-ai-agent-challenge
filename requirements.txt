@@ -12,3 +12,5 @@ numpy>=1.24.0
 scipy>=1.11.0
 streamlit-chat>=0.1.1
 toml>=0.10.0
+huggingface_hub>=0.24.0
+langchain-huggingface>=0.3.0

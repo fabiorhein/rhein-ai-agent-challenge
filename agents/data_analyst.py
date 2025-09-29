@@ -43,7 +43,6 @@ def run_data_analyst(api_key: str, df: pd.DataFrame, analysis_context: str, spec
         # Obtém o agente e os dados
         agent = get_data_analyst_agent(api_key)
         dataset_preview = get_dataset_preview(df)
-        
         # Verifica se o preview do dataset foi gerado corretamente
         if not dataset_preview:
             return "Erro: Não foi possível gerar o preview do dataset."
@@ -54,14 +53,21 @@ def run_data_analyst(api_key: str, df: pd.DataFrame, analysis_context: str, spec
             "analysis_context": analysis_context or "Nenhum contexto de análise anterior fornecido.",
             "specific_question": specific_question
         })
-        
+
         # Verifica se a resposta é válida
-        if not response or response.strip() == "undefined":
+        if not response:
             return "Desculpe, não foi possível gerar uma análise para esta pergunta. Por favor, tente reformular sua pergunta."
-            
-        return response
         
+        cleaned_response = response.strip()
+
+        # Alguns modelos (ex.: Gemini) podem retornar "undefined" ao final por engano
+        if cleaned_response.lower().endswith("undefined"):
+            cleaned_response = cleaned_response[: -len("undefined")].rstrip()
+            if not cleaned_response:
+                return "Desculpe, não foi possível gerar uma análise para esta pergunta. Por favor, tente reformular sua pergunta."
+        
+        return cleaned_response
     except Exception as e:
-        # Log do erro para depuração
+        # Log do erro para referência e devolver mensagem amigável
         print(f"Erro no DataAnalystAgent: {str(e)}")
         return f"Ocorreu um erro ao processar sua solicitação: {str(e)}"
