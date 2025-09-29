@@ -58,8 +58,17 @@ def run_data_analyst(api_key: str, df: pd.DataFrame, analysis_context: str, spec
         # Verifica se a resposta é válida
         if not response or response.strip() == "undefined":
             return "Desculpe, não foi possível gerar uma análise para esta pergunta. Por favor, tente reformular sua pergunta."
+        
+        # Remove any trailing 'undefined' and clean up the response
+        cleaned_response = response.strip()
+        if cleaned_response.endswith('undefined'):
+            cleaned_response = cleaned_response[:-9].strip()
             
-        return response
+        # Ensure the response ends with proper punctuation
+        if cleaned_response and not cleaned_response[-1] in {'.', '!', '?', ':'}:
+            cleaned_response += '.'
+            
+        return cleaned_response
         
     except Exception as e:
         # Log do erro para depuração

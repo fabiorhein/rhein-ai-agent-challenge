@@ -575,7 +575,45 @@ if st.session_state.df is not None:
                     del st.session_state.last_chart_code
 
             except Exception as e:
-                st.error(f"Ocorreu um erro inesperado: {e}")
+                error_msg = str(e)
+                # Check for API quota exceeded error
+                if "quota" in error_msg.lower() or "429" in error_msg or "exceeded" in error_msg.lower():
+                    st.error(f"""
+                    **Limite de requisições excedido**
+                    
+                    Parece que excedemos o limite de requisições gratuitas da API do Gemini para hoje.
+                    
+                    - Limite diário: 200 requisições
+                    - Tempo estimado para liberação: aproximadamente 1 minuto
+                    - Modelo afetado: Gemini 2.0 Flash
+                    
+                    **O que você pode fazer:**
+                    1. Aguarde cerca de 1 minuto antes de tentar novamente
+                    2. Se precisar de mais requisições, considere:
+                       - Verificar seu plano e limites de cota
+                       - Acessar: [Documentação de limites da API Gemini](https://ai.google.dev/gemini-api/docs/rate-limits)
+                    """)
+                else:
+                    # For other errors, show a friendly message with the error details
+                    st.error(f"""
+                    **Ocorreu um erro inesperado**
+                    
+                    Não foi possível processar sua solicitação no momento.
+                    
+                    Detalhes do erro: `{error_msg}`
+                    
+                    Por favor, tente novamente mais tarde ou entre em contato com o suporte se o problema persistir.
+                    """)
+                
+                # Log the full error for debugging
+                if DEBUG_MODE:
+                    st.error(f"Detalhes completos do erro (modo debug):\n```\n{error_msg}\n```")
+                
+                # Add the error to the chat history
+                st.session_state.messages.append({
+                    "role": "assistant", 
+                    "content": f"Desculpe, ocorreu um erro ao processar sua solicitação. Por favor, tente novamente mais tarde."
+                })
 
 # Adiciona um footer
 st.markdown("---")

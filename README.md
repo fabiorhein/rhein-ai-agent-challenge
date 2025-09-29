@@ -290,6 +290,30 @@ R: Sim! O Supabase é opcional e serve apenas para salvar o histórico.
    Você pode usar a aplicação normalmente sem ele.
 ```
 
+## ⚠️ Limites de Taxa da API do Gemini
+
+A aplicação utiliza a API do Google Gemini, que possui os seguintes limites na versão gratuita:
+
+- **Limite de requisições**: 200 requisições por dia
+- **Modelo padrão**: Gemini 2.0 Flash
+- **Tempo de espera**: Aproximadamente 1 minuto após atingir o limite
+
+### O que acontece quando atinjo o limite?
+
+- Você verá uma mensagem amigável em português explicando o limite
+- A aplicação continuará funcionando para análise local dos dados
+- As funcionalidades que dependem da API (respostas da IA) ficarão temporariamente indisponíveis
+
+### Como gerenciar o limite?
+
+1. **Acompanhe seu uso**: Verifique seu consumo em [Google AI Studio](https://makersuite.google.com/app/apikey)
+2. **Atualize seu plano**: Considere atualizar para um plano pago se precisar de mais requisições
+3. **Aguarde**: O limite é reiniciado após 24 horas da primeira requisição
+
+Para mais informações, consulte a [documentação oficial da API Gemini](https://ai.google.dev/gemini-api/docs/rate-limits).
+
+---
+
 **P: Quais são os custos da API do Google?**
 ```
 R: O Google Gemini tem uma cota gratuita generosa.
