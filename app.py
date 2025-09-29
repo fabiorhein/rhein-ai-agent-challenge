@@ -1,17 +1,21 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-import plotly.express as px  # Necessário para o exec
+import plotly.express as px
 import matplotlib.pyplot as plt
 import numpy as np
 from uuid import uuid4
 import time
+import os
+from pathlib import Path
 
 # Importações dos módulos do projeto
 from utils.config import get_config
 from utils.memory import SupabaseMemory
 from utils.data_loader import load_csv, get_dataset_info
-from utils.chart_cache import exec_with_cache  # Import do cache de gráficos
+from utils.chart_cache import exec_with_cache
+
+# Importação dos componentes de UI
 from components.ui_components import build_sidebar, display_chat_message, display_code_with_streamlit_suggestion
 from components.notebook_generator import create_jupyter_notebook
 from components.suggestion_generator import generate_dynamic_suggestions, get_fallback_suggestions, extract_conversation_context
@@ -24,13 +28,16 @@ from agents.consultant import run_consultant
 from agents.code_generator import run_code_generator
 from agents.agent_setup import get_dataset_preview
 
-# --- Configuração da Página e Estado da Sessão ---
-st.set_page_config(layout="wide", page_title="InsightAgent EDA")
+# Configuração do tema
+from config.theme import init_ui
 
-# Configuração de debug (pode ser alterada para False em produção)
-DEBUG_MODE = False
+# --- Configurações do Sistema ---
+DEBUG_MODE = False  # Modo de depuração (True para ver mensagens detalhadas de erro)
 
-# Inicializa o estado da sessão
+# --- Inicialização da Interface ---
+init_ui()
+
+# Inicialização do estado da sessão
 if 'session_id' not in st.session_state:
     st.session_state.session_id = None
 if 'user_id' not in st.session_state:
@@ -61,7 +68,28 @@ if not config["supabase_url"] or not config["supabase_key"]:
 memory = SupabaseMemory(url=config["supabase_url"], key=config["supabase_key"])
 
 # --- Interface do Usuário (Sidebar) ---
-uploaded_file = build_sidebar(memory, st.session_state.user_id)
+with st.sidebar:
+    st.title("🔍 InsightAgent EDA")
+    st.markdown("---")
+    
+    # Seção de upload de arquivo
+    st.markdown("### 📂 Carregar Dados")
+    uploaded_file = build_sidebar(memory, st.session_state.user_id)
+    
+    # Seção de ajuda
+    st.markdown("---")
+    with st.expander("❓ Como usar", expanded=False):
+        st.markdown("""
+        1. Faça upload de um arquivo CSV
+        2. Faça perguntas sobre seus dados
+        3. Explore visualizações interativas
+        4. Gere relatórios completos
+        
+        **Dica:** Tente perguntar coisas como:
+        - "Mostre a distribuição de X"
+        - "Existe correlação entre X e Y?"
+        - "Gere um gráfico de X por Y"
+        """)
 
 # --- Lógica Principal de Processamento do CSV ---
 if uploaded_file is not None:
@@ -125,15 +153,176 @@ if uploaded_file is None and st.session_state.get('df') is not None:
 
 # --- Área Principal de Exibição ---
 st.title("🤖 InsightAgent EDA: Seu Assistente de Análise de Dados")
-st.markdown("Faça o upload de um arquivo CSV na barra lateral para começar a explorar seus dados.")
 
 if st.session_state.df is not None:
-    st.header("Preview do Dataset")
-    st.dataframe(st.session_state.df.head())
+    # Container para o cabeçalho do dataset (fora das abas)
+    header = st.container()
+    
+    # Abas para diferentes visualizações
+    tab1, tab2 = st.tabs(["📋 Dataset", "📊 Estatísticas"])
+    
+    # Cabeçalho com informações do dataset (fora das abas)
+    with header:
+        st.markdown("---")
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            st.title(f"📊 {st.session_state.df_info.get('name', 'Dataset')}")
+        with col2:
+            rows = st.session_state.df.shape[0]
+            cols = st.session_state.df.shape[1]
+            st.metric("Linhas/Colunas", f"{rows} × {cols}")
+        st.markdown("---")
+    
+    with tab1:
+        st.subheader("Visualização dos Dados")
+        st.dataframe(st.session_state.df.head(10), width='stretch')
+    
+    with tab2:
+        st.subheader("📈 Estatísticas Descritivas")
+        
+        # Adicionando estilos CSS personalizados
+        st.markdown("""
+        <style>
+            .stats-card {
+                background-color: var(--background-color, #0e1117);
+                border: 1px solid #2d3748;
+                border-radius: 0.5rem;
+                padding: 1rem;
+                margin-bottom: 1rem;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+                transition: all 0.2s;
+            }
+            .stats-card:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            }
+            .stats-card h4 {
+                color: #9ca3af;
+                margin: 0 0 0.5rem 0;
+                font-size: 0.875rem;
+                font-weight: 500;
+            }
+            .stats-card p {
+                color: #e5e7eb;
+                margin: 0;
+                font-size: 1.25rem;
+                font-weight: 600;
+            }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        # Estatísticas em cards com melhor espaçamento
+        st.markdown(
+            """
+            <div style='margin-bottom: 1.5rem;'>
+                <h4 style='margin-bottom: 0.75rem; color: #9ca3af;'>Visão Geral do Dataset</h4>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        
+        # Primeira linha de cards
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.markdown(f"""
+            <div class="stats-card">
+                <h4>Total de Registros</h4>
+                <p>{len(st.session_state.df):,}</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+        with col2:
+            st.markdown(f"""
+            <div class="stats-card">
+                <h4>Colunas Numéricas</h4>
+                <p>{len(st.session_state.df.select_dtypes(include=['int64', 'float64']).columns)}</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+        with col3:
+            st.markdown(f"""
+            <div class="stats-card">
+                <h4>Colunas Categóricas</h4>
+                <p>{len(st.session_state.df.select_dtypes(include=['object', 'category']).columns)}</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+        with col4:
+            st.markdown(f"""
+            <div class="stats-card">
+                <h4>Valores Faltantes</h4>
+                <p>{st.session_state.df.isnull().sum().sum()}</p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # Estatísticas descritivas detalhadas
+        st.markdown(
+            """
+            <div style='margin: 1.5rem 0 0.75rem 0;'>
+                <h4 style='margin-bottom: 0.75rem; color: #9ca3af;'>Resumo Estatístico</h4>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        
+        # Estatísticas descritivas com rolagem horizontal
+        st.markdown("""
+        <style>
+            .dataframe-container {
+                overflow-x: auto;
+                margin-bottom: 1.5rem;
+                border-radius: 0.5rem;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            }
+            .dataframe {
+                width: 100% !important;
+                min-width: 100%;
+            }
+        </style>
+        <div class='dataframe-container'>
+        """, unsafe_allow_html=True)
+        
+        # Exibindo o resumo estatístico com formatação melhorada
+        st.dataframe(
+            st.session_state.df.describe().round(2),
+            width='stretch'
+        )
+        
+        st.markdown("</div>", unsafe_allow_html=True)
+        
+        # Informações adicionais sobre o dataset
+        st.markdown(
+            """
+            <div style='margin-top: 2rem;'>
+                <h4 style='margin-bottom: 0.75rem; color: #9ca3af;'>Informações Adicionais</h4>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        
+        # Colunas para informações adicionais
+        col_info1, col_info2 = st.columns(2)
+        
+        with col_info1:
+            st.markdown("""
+            <div class="stats-card">
+                <h4>Colunas com Valores Únicos</h4>
+                <p>{}</p>
+            </div>
+            """.format(", ".join([col for col in st.session_state.df.columns if st.session_state.df[col].nunique() == len(st.session_state.df)]) or "Nenhuma"), 
+            unsafe_allow_html=True)
+            
+        with col_info2:
+            st.markdown(f"""
+            <div class="stats-card">
+                <h4>Uso de Memória</h4>
+                <p>{st.session_state.df.memory_usage(deep=True).sum() / (1024 * 1024):.2f} MB</p>
+            </div>
+            """, unsafe_allow_html=True)
 
-    st.header("Estatísticas Rápidas")
-    st.json(st.session_state.df_info, expanded=False)
-
+    # Fechando a aba de estatísticas
+    
     # --- Interface de Chat ---
     st.header("Converse com seus Dados")
 
@@ -575,8 +764,77 @@ if st.session_state.df is not None:
                     del st.session_state.last_chart_code
 
             except Exception as e:
-                st.error(f"Ocorreu um erro inesperado: {e}")
+                error_msg = str(e)
+                # Check for API quota exceeded error
+                if "quota" in error_msg.lower() or "429" in error_msg or "exceeded" in error_msg.lower():
+                    st.error(f"""
+                    **Limite de requisições excedido**
+                    
+                    Parece que excedemos o limite de requisições gratuitas da API do Gemini para hoje.
+                    
+                    - Limite diário: 200 requisições
+                    - Tempo estimado para liberação: aproximadamente 1 minuto
+                    - Modelo afetado: Gemini 2.0 Flash
+                    
+                    **O que você pode fazer:**
+                    1. Aguarde cerca de 1 minuto antes de tentar novamente
+                    2. Se precisar de mais requisições, considere:
+                       - Verificar seu plano e limites de cota
+                       - Acessar: [Documentação de limites da API Gemini](https://ai.google.dev/gemini-api/docs/rate-limits)
+                    """)
+                else:
+                    # For other errors, show a friendly message with the error details
+                    st.error(f"""
+                    **Ocorreu um erro inesperado**
+                    
+                    Não foi possível processar sua solicitação no momento.
+                    
+                    Detalhes do erro: `{error_msg}`
+                    
+                    Por favor, tente novamente mais tarde ou entre em contato com o suporte se o problema persistir.
+                    """)
+                
+                # Log the full error for debugging
+                if DEBUG_MODE:
+                    st.error(f"Detalhes completos do erro (modo debug):\n```\n{error_msg}\n```")
+                
+                # Add the error to the chat history
+                st.session_state.messages.append({
+                    "role": "assistant", 
+                    "content": f"Desculpe, ocorreu um erro ao processar sua solicitação. Por favor, tente novamente mais tarde."
+                })
 
 # Adiciona um footer
 st.markdown("---")
-st.markdown("Sistema de Análise Exploratória de Dados com IA - Projeto Acadêmico")
+footer = """
+<footer style="text-align: center; color: #6b7280; padding: 1.5rem 0; margin-top: 2rem; border-top: 1px solid #e5e7eb;">
+    <div style="max-width: 800px; margin: 0 auto;">
+        <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem;">
+            Sistema de Análise Exploratória de Dados com IA - Projeto Acadêmico
+        </p>
+        <div style="display: flex; justify-content: center; gap: 1.5rem; margin-top: 0.5rem;">
+            <span style="display: inline-flex; align-items: center; gap: 0.25rem;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                    <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                </svg>
+                v1.0.0
+            </span>
+            <span style="display: inline-flex; align-items: center; gap: 0.25rem;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                </svg>
+                Seguro e Privado
+            </span>
+            <span style="display: inline-flex; align-items: center; gap: 0.25rem;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                </svg>
+                Desenvolvido com Streamlit - By Fábio Rhein
+            </span>
+        </div>
+    </div>
+</footer>
+"""
+st.markdown(footer, unsafe_allow_html=True)
