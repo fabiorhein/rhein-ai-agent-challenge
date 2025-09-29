@@ -2,6 +2,17 @@
 
 Uma aplicação inteligente que permite fazer perguntas sobre seus dados em linguagem natural e receber análises completas, gráficos interativos e insights acionáveis.
 
+## 🎨 Melhorias Visuais (Atualizado em Set/2025)
+
+Realizamos melhorias significativas na interface do usuário para melhorar a experiência:
+
+- **Design Moderno e Escuro** - Interface com tema escuro para maior conforto visual
+- **Cards de Estatísticas Aprimorados** - Visualização clara e organizada das métricas principais
+- **Layout Responsivo** - Adapta-se perfeitamente a diferentes tamanhos de tela
+- **Navegação Intuitiva** - Sistema de abas para fácil acesso às diferentes seções de análise
+- **Feedback Visual Aprimorado** - Animações sutis e estados de hover para melhor interatividade
+- **Tabelas Roláveis** - Visualização otimizada para conjuntos de dados grandes
+
 ## 🎯 O que é esta aplicação?
 
 O **InsightAgent EDA** é uma ferramenta de análise exploratória de dados que utiliza inteligência artificial para:
