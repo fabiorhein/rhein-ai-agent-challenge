@@ -184,6 +184,71 @@ Se você não tem dados próprios, pode usar estes datasets públicos:
 | `plotly` | Criação de gráficos interativos |
 | `supabase` | Banco de dados para histórico |
 
+## 🗄️ Supabase: Script de Criação de Tabelas
+
+Use o script abaixo para criar as tabelas no seu projeto Supabase. Você pode executar no SQL Editor do Supabase.
+
+```sql
+-- Habilita a extensão para usar UUIDs
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Tabela de sessões de análise
+CREATE TABLE sessions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  dataset_name TEXT,
+  dataset_hash TEXT,
+  user_id TEXT -- Pode ser um identificador de sessão do Streamlit
+);
+
+-- Tabela de conversas (perguntas e respostas)
+CREATE TABLE conversations (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  session_id UUID REFERENCES sessions(id) ON DELETE CASCADE,
+  question TEXT NOT NULL,
+  answer TEXT,
+  chart_json JSONB, -- Para armazenar a especificação do gráfico Plotly
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Tabela de análises estatísticas detalhadas
+CREATE TABLE analyses (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  session_id UUID REFERENCES sessions(id) ON DELETE CASCADE,
+  conversation_id UUID REFERENCES conversations(id) ON DELETE SET NULL, -- Análise pode ser associada a uma conversa
+  analysis_type TEXT NOT NULL, -- Ex: 'descriptive_stats', 'correlation_matrix'
+  results JSONB NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Tabela de conclusões e insights gerados
+CREATE TABLE conclusions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  session_id UUID REFERENCES sessions(id) ON DELETE CASCADE,
+  conversation_id UUID REFERENCES conversations(id) ON DELETE SET NULL,
+  conclusion_text TEXT NOT NULL,
+  confidence_score FLOAT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Tabela de códigos gerados
+CREATE TABLE generated_codes (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  session_id UUID REFERENCES sessions(id) ON DELETE CASCADE,
+  conversation_id UUID REFERENCES conversations(id) ON DELETE CASCADE,
+  code_type TEXT NOT NULL, -- 'analysis', 'visualization', 'complete', 'notebook'
+  python_code TEXT NOT NULL,
+  description TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Adiciona índices para otimizar consultas
+CREATE INDEX idx_conversations_session_id ON conversations(session_id);
+CREATE INDEX idx_analyses_session_id ON analyses(session_id);
+CREATE INDEX idx_conclusions_session_id ON conclusions(session_id);
+CREATE INDEX idx_generated_codes_session_id ON generated_codes(session_id);
+```
+
 ## 🎨 Funcionalidades Avançadas
 
 ### **Cache Inteligente**
